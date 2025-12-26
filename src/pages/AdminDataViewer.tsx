@@ -9,19 +9,22 @@ import {
   Receipt, 
   Loader2, 
   Filter,
-  ChevronDown,
-  Home
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  Calendar
 } from 'lucide-react';
 
 import { database } from '@/lib/firebase';
 import { Layout } from '@/components/Layout';
 import { useAuth, Profile } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatCurrency, formatMonth } from '@/lib/formatters';
+import { formatCurrency, formatMonth, getCurrentMonth, getNextMonth, getPrevMonth } from '@/lib/formatters';
 import { Property, Unit, Tenant, RentPayment, Expense } from '@/types';
 
 type ProfileRecord = Omit<Profile, 'role'>;
@@ -40,6 +43,7 @@ export default function AdminDataViewer() {
   const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
   const [usersData, setUsersData] = useState<Record<string, UserData>>({});
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -89,9 +93,11 @@ export default function AdminDataViewer() {
   }, [isAdmin]);
 
   const filteredData = useMemo(() => {
+    let baseData: UserData & { properties: any[]; units: any[]; tenants: any[]; payments: any[]; expenses: any[] };
+    
     if (selectedUserId === 'all') {
       // Combine all users' data
-      const combined: UserData = {
+      baseData = {
         properties: [],
         units: [],
         tenants: [],
@@ -100,24 +106,41 @@ export default function AdminDataViewer() {
       };
       
       Object.entries(usersData).forEach(([userId, data]) => {
-        combined.properties.push(...data.properties.map(p => ({ ...p, _userId: userId })));
-        combined.units.push(...data.units.map(u => ({ ...u, _userId: userId })));
-        combined.tenants.push(...data.tenants.map(t => ({ ...t, _userId: userId })));
-        combined.payments.push(...data.payments.map(p => ({ ...p, _userId: userId })));
-        combined.expenses.push(...data.expenses.map(e => ({ ...e, _userId: userId })));
+        baseData.properties.push(...data.properties.map(p => ({ ...p, _userId: userId })));
+        baseData.units.push(...data.units.map(u => ({ ...u, _userId: userId })));
+        baseData.tenants.push(...data.tenants.map(t => ({ ...t, _userId: userId })));
+        baseData.payments.push(...data.payments.map(p => ({ ...p, _userId: userId })));
+        baseData.expenses.push(...data.expenses.map(e => ({ ...e, _userId: userId })));
       });
-      
-      return combined;
+    } else {
+      const userData = usersData[selectedUserId];
+      baseData = userData ? {
+        properties: userData.properties.map(p => ({ ...p, _userId: selectedUserId })),
+        units: userData.units.map(u => ({ ...u, _userId: selectedUserId })),
+        tenants: userData.tenants.map(t => ({ ...t, _userId: selectedUserId })),
+        payments: userData.payments.map(p => ({ ...p, _userId: selectedUserId })),
+        expenses: userData.expenses.map(e => ({ ...e, _userId: selectedUserId })),
+      } : {
+        properties: [],
+        units: [],
+        tenants: [],
+        payments: [],
+        expenses: [],
+      };
     }
     
-    return usersData[selectedUserId] || {
-      properties: [],
-      units: [],
-      tenants: [],
-      payments: [],
-      expenses: [],
-    };
-  }, [selectedUserId, usersData]);
+    // Filter payments by selected month
+    baseData.payments = baseData.payments.filter((payment: any) => payment.month === selectedMonth);
+    
+    // Filter expenses by selected month (using createdAt date)
+    baseData.expenses = baseData.expenses.filter((expense: any) => {
+      if (!expense.createdAt) return false;
+      const expenseMonth = format(new Date(expense.createdAt), 'yyyy-MM');
+      return expenseMonth === selectedMonth;
+    });
+    
+    return baseData;
+  }, [selectedUserId, usersData, selectedMonth]);
 
   const getUserName = (userId: string) => {
     const profile = profiles.find(p => p.id === userId);
@@ -148,27 +171,45 @@ export default function AdminDataViewer() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Admin Data Viewer</h1>
-            <p className="text-muted-foreground mt-1">View all users' property data</p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Admin Data Viewer</h1>
+              <p className="text-muted-foreground mt-1">View all users' property data</p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                <SelectTrigger className="w-[250px]">
+                  <SelectValue placeholder="Filter by user" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Users</SelectItem>
+                  {usersWithData.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.full_name || profile.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-              <SelectTrigger className="w-[250px]">
-                <SelectValue placeholder="Filter by user" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Users</SelectItem>
-                {usersWithData.map((profile) => (
-                  <SelectItem key={profile.id} value={profile.id}>
-                    {profile.full_name || profile.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Month Selector - Mandatory Filter */}
+          <div className="flex items-center justify-center">
+            <div className="flex items-center gap-2 bg-card rounded-xl border shadow-sm px-4 py-2">
+              <Calendar className="h-4 w-4 text-primary" />
+              <Button variant="ghost" size="icon" onClick={() => setSelectedMonth(getPrevMonth(selectedMonth))}>
+                <ChevronLeft className="w-5 h-5" />
+              </Button>
+              <span className="font-semibold text-lg min-w-[160px] text-center">
+                {formatMonth(selectedMonth)}
+              </span>
+              <Button variant="ghost" size="icon" onClick={() => setSelectedMonth(getNextMonth(selectedMonth))}>
+                <ChevronRight className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
         </div>
 
