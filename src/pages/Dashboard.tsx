@@ -10,7 +10,9 @@ import {
   Play,
   Lock,
   TrendingUp,
-  CalendarClock
+  CalendarClock,
+  Banknote,
+  Smartphone
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useDashboardStats, usePropertyStats, useExpenseStats, getEffectiveStatus } from '@/hooks/useDashboardStats';
@@ -255,7 +257,8 @@ export default function Dashboard() {
                 Financial Summary
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
+              {/* Main totals */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="text-center p-4 bg-success/10 rounded-xl">
                   <p className="text-sm text-muted-foreground mb-1">Rent Collected</p>
@@ -268,6 +271,31 @@ export default function Dashboard() {
                 <div className="text-center p-4 bg-primary/10 rounded-xl">
                   <p className="text-sm text-muted-foreground mb-1">Leftover Balance</p>
                   <p className="text-2xl font-bold text-primary">{formatCurrency(expenseStats.leftoverBalance)}</p>
+                </div>
+              </div>
+              
+              {/* Cash vs UPI breakdown */}
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium text-muted-foreground mb-3">Collection Breakdown</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-3 p-4 bg-muted rounded-xl">
+                    <div className="p-2 bg-success/10 rounded-lg">
+                      <Banknote className="w-5 h-5 text-success" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Cash</p>
+                      <p className="text-xl font-bold">{formatCurrency(expenseStats.cashCollected)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-4 bg-muted rounded-xl">
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      <Smartphone className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">UPI / Bank</p>
+                      <p className="text-xl font-bold">{formatCurrency(expenseStats.upiCollected)}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>

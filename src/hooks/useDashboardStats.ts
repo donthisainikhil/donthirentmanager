@@ -117,11 +117,26 @@ export const useExpenseStats = (month: string) => {
     
     const totalExpenses = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
     const totalRentCollected = monthPayments.reduce((sum, p) => sum + p.paidAmount, 0);
+    
+    // Calculate cash vs UPI collections
+    const cashCollected = monthPayments
+      .filter(p => p.paymentMethod === 'cash')
+      .reduce((sum, p) => sum + p.paidAmount, 0);
+    const upiCollected = monthPayments
+      .filter(p => p.paymentMethod === 'upi')
+      .reduce((sum, p) => sum + p.paidAmount, 0);
+    // For payments without method recorded (legacy), assume cash
+    const unspecifiedCollected = monthPayments
+      .filter(p => !p.paymentMethod && p.paidAmount > 0)
+      .reduce((sum, p) => sum + p.paidAmount, 0);
+    
     const leftoverBalance = totalRentCollected - totalExpenses;
     
     return {
       totalExpenses,
       totalRentCollected,
+      cashCollected: cashCollected + unspecifiedCollected,
+      upiCollected,
       leftoverBalance,
       expenseCount: monthExpenses.length
     };

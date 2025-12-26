@@ -6,7 +6,9 @@ import { Label } from '@/components/ui/label';
 import { useStore } from '@/store/useStore';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/formatters';
-import { RentPayment } from '@/types';
+import { RentPayment, PaymentMethod } from '@/types';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Banknote, Smartphone } from 'lucide-react';
 
 interface PaymentDialogProps {
   open: boolean;
@@ -17,6 +19,7 @@ interface PaymentDialogProps {
 export function PaymentDialog({ open, onOpenChange, payment }: PaymentDialogProps) {
   const { markPaymentPaid, tenants, units, properties } = useStore();
   const [amount, setAmount] = useState((payment.totalAmount - payment.paidAmount).toString());
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
 
   const tenant = tenants.find(t => t.id === payment.tenantId);
   const unit = units.find(u => u.id === payment.unitId);
@@ -38,7 +41,7 @@ export function PaymentDialog({ open, onOpenChange, payment }: PaymentDialogProp
       return;
     }
 
-    markPaymentPaid(payment.id, paymentAmount);
+    markPaymentPaid(payment.id, paymentAmount, paymentMethod);
     toast.success('Payment recorded successfully');
     onOpenChange(false);
   };
@@ -99,6 +102,37 @@ export function PaymentDialog({ open, onOpenChange, payment }: PaymentDialogProp
                 onChange={(e) => setAmount(e.target.value)}
               />
             </div>
+
+            <div className="space-y-2">
+              <Label>Payment Method</Label>
+              <RadioGroup
+                value={paymentMethod}
+                onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}
+                className="grid grid-cols-2 gap-3"
+              >
+                <Label
+                  htmlFor="cash"
+                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    paymentMethod === 'cash' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="cash" id="cash" />
+                  <Banknote className="w-5 h-5 text-success" />
+                  <span className="font-medium">Cash</span>
+                </Label>
+                <Label
+                  htmlFor="upi"
+                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    paymentMethod === 'upi' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="upi" id="upi" />
+                  <Smartphone className="w-5 h-5 text-primary" />
+                  <span className="font-medium">UPI</span>
+                </Label>
+              </RadioGroup>
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel

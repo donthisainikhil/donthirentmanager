@@ -6,7 +6,9 @@ import { Label } from '@/components/ui/label';
 import { useStore } from '@/store/useStore';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/formatters';
-import { Unit } from '@/types';
+import { Unit, PaymentMethod } from '@/types';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Banknote, Smartphone } from 'lucide-react';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -25,6 +27,7 @@ export function RecordPaymentDialog({ open, onOpenChange, unit, month }: RecordP
   const totalAmount = unit.monthlyRent + waterBill;
   
   const [amount, setAmount] = useState(totalAmount.toString());
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,6 +65,7 @@ export function RecordPaymentDialog({ open, onOpenChange, unit, month }: RecordP
         paidAmount: paymentAmount,
         status,
         paidDate: paymentAmount > 0 ? new Date().toISOString() : undefined,
+        paymentMethod: paymentAmount > 0 ? paymentMethod : undefined,
       });
       
       toast.success('Payment recorded successfully');
@@ -127,6 +131,37 @@ export function RecordPaymentDialog({ open, onOpenChange, unit, month }: RecordP
                 Enter 0 to create a pending payment record
               </p>
             </div>
+
+            <div className="space-y-2">
+              <Label>Payment Method</Label>
+              <RadioGroup
+                value={paymentMethod}
+                onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}
+                className="grid grid-cols-2 gap-3"
+              >
+                <Label
+                  htmlFor="record-cash"
+                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    paymentMethod === 'cash' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="cash" id="record-cash" />
+                  <Banknote className="w-5 h-5 text-success" />
+                  <span className="font-medium">Cash</span>
+                </Label>
+                <Label
+                  htmlFor="record-upi"
+                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    paymentMethod === 'upi' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
+                  }`}
+                >
+                  <RadioGroupItem value="upi" id="record-upi" />
+                  <Smartphone className="w-5 h-5 text-primary" />
+                  <span className="font-medium">UPI</span>
+                </Label>
+              </RadioGroup>
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel

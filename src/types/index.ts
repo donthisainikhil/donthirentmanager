@@ -45,9 +45,12 @@ export interface RentPayment {
   totalAmount: number;
   paidAmount: number;
   paidDate?: string;
+  paymentMethod?: 'cash' | 'upi'; // Track payment method
   status: 'paid' | 'partial' | 'pending' | 'overdue';
   createdAt: string;
 }
+
+export type PaymentMethod = 'cash' | 'upi';
 
 export interface Expense {
   id: string;

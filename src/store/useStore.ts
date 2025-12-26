@@ -8,7 +8,8 @@ import {
   Tenant, 
   RentPayment, 
   Expense, 
-  MonthlyStatus 
+  MonthlyStatus,
+  PaymentMethod
 } from '@/types';
 
 interface AppState {
@@ -47,7 +48,7 @@ interface AppState {
   // Payment actions
   addPayment: (payment: Omit<RentPayment, 'id' | 'createdAt'>) => Promise<void>;
   updatePayment: (id: string, payment: Partial<RentPayment>) => Promise<void>;
-  markPaymentPaid: (id: string, amount: number) => Promise<void>;
+  markPaymentPaid: (id: string, amount: number, paymentMethod: PaymentMethod) => Promise<void>;
   
   // Expense actions
   addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => Promise<void>;
@@ -387,7 +388,7 @@ export const useStore = create<AppState>()((set, get) => ({
   },
   
   // Mark payment as paid - settles oldest overdue first for the same tenant
-  markPaymentPaid: async (id, amount) => {
+  markPaymentPaid: async (id, amount, paymentMethod) => {
     const state = get();
     const userId = state.currentUserId;
     if (!userId) throw new Error('User not authenticated');
@@ -415,6 +416,7 @@ export const useStore = create<AppState>()((set, get) => ({
       updates[`users/${userId}/payments/${p.id}/paidAmount`] = newPaidAmount;
       updates[`users/${userId}/payments/${p.id}/paidDate`] = new Date().toISOString();
       updates[`users/${userId}/payments/${p.id}/status`] = status;
+      updates[`users/${userId}/payments/${p.id}/paymentMethod`] = paymentMethod;
       
       remainingAmount -= amountToApply;
     }
