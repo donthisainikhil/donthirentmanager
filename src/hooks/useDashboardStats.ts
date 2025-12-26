@@ -67,8 +67,6 @@ export const usePropertyStats = (month: string): PropertyStats[] => {
   const { properties, payments, units } = useStore();
   
   return useMemo(() => {
-    const currentMonth = getCurrentMonth();
-    
     return properties.map(property => {
       const propertyPayments = payments.filter(
         p => p.propertyId === property.id && p.month === month
@@ -76,12 +74,16 @@ export const usePropertyStats = (month: string): PropertyStats[] => {
       const propertyUnits = units.filter(u => u.propertyId === property.id);
       
       const rentCollected = propertyPayments.reduce((sum, p) => sum + p.paidAmount, 0);
+      
+      // Calculate due (pending/partial that are NOT overdue)
       const rentDue = propertyPayments
         .filter(p => {
           const effectiveStatus = getEffectiveStatus(p);
           return effectiveStatus === 'pending' || effectiveStatus === 'partial';
         })
         .reduce((sum, p) => sum + (p.totalAmount - p.paidAmount), 0);
+      
+      // Calculate overdue (past 10th and not fully paid)
       const overdueAmount = propertyPayments
         .filter(p => {
           const effectiveStatus = getEffectiveStatus(p);
