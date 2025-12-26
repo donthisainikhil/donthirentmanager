@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { database } from '@/lib/firebase';
+import { supabase } from '@/integrations/supabase/client';
 import { Layout } from '@/components/Layout';
 import { useAuth, Profile } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +28,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatCurrency, formatMonth, getCurrentMonth, getNextMonth, getPrevMonth } from '@/lib/formatters';
 import { Property, Unit, Tenant, RentPayment, Expense } from '@/types';
 
-type ProfileRecord = Omit<Profile, 'role'>;
+type ProfileRecord = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  created_at: string;
+};
 
 interface UserData {
   properties: Property[];
@@ -49,20 +55,23 @@ export default function AdminDataViewer() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Load all profiles
-    const profilesRef = ref(database, 'profiles');
-    const unsubProfiles = onValue(profilesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const profilesData = snapshot.val();
-        const list = Object.values(profilesData) as ProfileRecord[];
-        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setProfiles(list);
+    // Load all profiles from Supabase
+    const fetchProfiles = async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, created_at')
+        .order('created_at', { ascending: false });
+      
+      if (!error && data) {
+        setProfiles(data);
       } else {
         setProfiles([]);
       }
-    });
+    };
 
-    // Load all users' data
+    fetchProfiles();
+
+    // Load all users' data from Firebase
     const usersRef = ref(database, 'users');
     const unsubUsers = onValue(usersRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -87,7 +96,6 @@ export default function AdminDataViewer() {
     });
 
     return () => {
-      unsubProfiles();
       unsubUsers();
     };
   }, [isAdmin]);
