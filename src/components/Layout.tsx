@@ -40,6 +40,9 @@ export function Layout({ children }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isAdmin, signOut, profile } = useAuth();
 
+  // Use property name from profile, fallback to generic name
+  const appName = profile?.property_name ? `${profile.property_name} Rents` : 'Property Manager';
+
   const allNavItems = isAdmin 
     ? [...navItems, ...adminItems]
     : navItems;
@@ -53,7 +56,7 @@ export function Layout({ children }: LayoutProps) {
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
               <Building2 className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-bold text-lg">Donthi's Rents</span>
+            <span className="font-bold text-lg truncate max-w-[180px]">{appName}</span>
           </Link>
           <Button
             variant="ghost"
@@ -127,7 +130,7 @@ export function Layout({ children }: LayoutProps) {
               <Building2 className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="font-bold text-lg">Donthi's Rents</h1>
+              <h1 className="font-bold text-lg truncate max-w-[160px]">{appName}</h1>
               <p className="text-xs text-muted-foreground">Property Management</p>
             </div>
           </Link>
@@ -176,7 +179,7 @@ export function Layout({ children }: LayoutProps) {
           </Button>
           <div className="bg-muted rounded-lg p-4">
             <p className="text-xs text-muted-foreground text-center">
-              © 2024 Donthi's Rents
+              © 2024 {appName}
             </p>
           </div>
         </div>
