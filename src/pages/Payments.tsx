@@ -19,6 +19,19 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RecordPaymentDialog } from '@/components/RecordPaymentDialog';
+import { isAfter, parse } from 'date-fns';
+
+// Helper to get effective status (rent is due by 10th of each month)
+const getEffectiveStatus = (payment: RentPayment): RentPayment['status'] => {
+  const now = new Date();
+  const paymentMonth = parse(payment.month, 'yyyy-MM', new Date());
+  const dueDate = new Date(paymentMonth.getFullYear(), paymentMonth.getMonth(), 10, 23, 59, 59);
+  
+  if (payment.paidAmount < payment.totalAmount && isAfter(now, dueDate)) {
+    return 'overdue';
+  }
+  return payment.status;
+};
 
 export default function Payments() {
   const { payments, tenants, units, properties, selectedMonth } = useStore();
@@ -27,15 +40,23 @@ export default function Payments() {
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [activeTab, setActiveTab] = useState<string>('payments');
 
-  const monthPayments = payments
+  // Apply effective status to all payments
+  const paymentsWithEffectiveStatus = useMemo(() => {
+    return payments.map(p => ({
+      ...p,
+      effectiveStatus: getEffectiveStatus(p)
+    }));
+  }, [payments]);
+
+  const monthPayments = paymentsWithEffectiveStatus
     .filter(p => p.month === selectedMonth)
-    .filter(p => statusFilter === 'all' || p.status === statusFilter);
+    .filter(p => statusFilter === 'all' || p.effectiveStatus === statusFilter);
 
   const stats = {
     total: monthPayments.length,
-    paid: monthPayments.filter(p => p.status === 'paid').length,
-    pending: monthPayments.filter(p => p.status === 'pending' || p.status === 'partial').length,
-    overdue: monthPayments.filter(p => p.status === 'overdue').length,
+    paid: monthPayments.filter(p => p.effectiveStatus === 'paid').length,
+    pending: monthPayments.filter(p => p.effectiveStatus === 'pending' || p.effectiveStatus === 'partial').length,
+    overdue: monthPayments.filter(p => p.effectiveStatus === 'overdue').length,
   };
 
   // Get units with their payment status for the selected month
@@ -43,7 +64,7 @@ export default function Payments() {
     return units.map(unit => {
       const tenant = tenants.find(t => t.unitId === unit.id);
       const property = properties.find(p => p.id === unit.propertyId);
-      const payment = payments.find(p => p.unitId === unit.id && p.month === selectedMonth);
+      const payment = paymentsWithEffectiveStatus.find(p => p.unitId === unit.id && p.month === selectedMonth);
       
       return {
         unit,
@@ -51,10 +72,11 @@ export default function Payments() {
         property,
         payment,
         hasPayment: !!payment,
-        isPaid: payment?.status === 'paid',
+        isPaid: payment?.effectiveStatus === 'paid',
+        isOverdue: payment?.effectiveStatus === 'overdue',
       };
     }).filter(item => item.unit.isOccupied); // Only show occupied units
-  }, [units, tenants, properties, payments, selectedMonth]);
+  }, [units, tenants, properties, paymentsWithEffectiveStatus, selectedMonth]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -139,6 +161,7 @@ export default function Payments() {
                 const unit = units.find(u => u.id === payment.unitId);
                 const property = properties.find(p => p.id === payment.propertyId);
                 const remaining = payment.totalAmount - payment.paidAmount;
+                const displayStatus = payment.effectiveStatus;
 
                 return (
                   <motion.div
@@ -147,16 +170,16 @@ export default function Payments() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.03 }}
                   >
-                    <Card hover onClick={() => payment.status !== 'paid' && setSelectedPayment(payment)}>
+                    <Card hover onClick={() => displayStatus !== 'paid' && setSelectedPayment(payment)}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className={`p-2 rounded-full ${
-                              payment.status === 'paid' ? 'bg-success/10' :
-                              payment.status === 'overdue' ? 'bg-danger/10' :
+                              displayStatus === 'paid' ? 'bg-success/10' :
+                              displayStatus === 'overdue' ? 'bg-danger/10' :
                               'bg-warning/10'
                             }`}>
-                              {getStatusIcon(payment.status)}
+                              {getStatusIcon(displayStatus)}
                             </div>
                             <div>
                               <p className="font-semibold">{tenant?.firstName} {tenant?.lastName}</p>
@@ -168,9 +191,9 @@ export default function Payments() {
                           <div className="text-right">
                             <div className="flex items-center gap-2 justify-end">
                               <p className="font-bold text-lg">{formatCurrency(payment.totalAmount)}</p>
-                              <Badge variant={payment.status as any}>{payment.status}</Badge>
+                              <Badge variant={displayStatus as any}>{displayStatus}</Badge>
                             </div>
-                            {payment.status !== 'paid' && (
+                            {displayStatus !== 'paid' && (
                               <p className="text-sm text-muted-foreground">
                                 Due: {formatCurrency(remaining)}
                               </p>
@@ -186,7 +209,7 @@ export default function Payments() {
                               Water: {formatCurrency(payment.waterBill)}
                             </span>
                           </div>
-                          {payment.status !== 'paid' && (
+                          {displayStatus !== 'paid' && (
                             <Button 
                               size="sm" 
                               variant="success"
@@ -243,11 +266,14 @@ export default function Payments() {
                         <div className="flex items-center gap-4">
                           <div className={`p-2 rounded-full ${
                             item.isPaid ? 'bg-success/10' :
+                            item.isOverdue ? 'bg-danger/10' :
                             item.hasPayment ? 'bg-warning/10' :
                             'bg-muted'
                           }`}>
                             {item.isPaid ? (
                               <CheckCircle2 className="w-4 h-4 text-success" />
+                            ) : item.isOverdue ? (
+                              <AlertCircle className="w-4 h-4 text-danger" />
                             ) : item.hasPayment ? (
                               <Clock className="w-4 h-4 text-warning" />
                             ) : (
@@ -270,6 +296,8 @@ export default function Payments() {
                           </div>
                           {item.isPaid ? (
                             <Badge variant="default" className="bg-success">Paid</Badge>
+                          ) : item.isOverdue ? (
+                            <Badge variant="destructive">Overdue</Badge>
                           ) : item.hasPayment ? (
                             <Button 
                               size="sm" 
