@@ -48,7 +48,7 @@ interface AppState {
   // Payment actions
   addPayment: (payment: Omit<RentPayment, 'id' | 'createdAt'>) => Promise<void>;
   updatePayment: (id: string, payment: Partial<RentPayment>) => Promise<void>;
-  markPaymentPaid: (id: string, amount: number, paymentMethod: PaymentMethod) => Promise<void>;
+  markPaymentPaid: (id: string, amount: number, paymentMethod: PaymentMethod, useAdvance?: number) => Promise<void>;
   
   // Expense actions
   addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => Promise<void>;
@@ -388,7 +388,7 @@ export const useStore = create<AppState>()((set, get) => ({
   },
   
   // Mark payment as paid - settles oldest overdue first for the same tenant
-  markPaymentPaid: async (id, amount, paymentMethod) => {
+  markPaymentPaid: async (id, amount, paymentMethod, useAdvance = 0) => {
     const state = get();
     const userId = state.currentUserId;
     if (!userId) throw new Error('User not authenticated');
@@ -396,12 +396,17 @@ export const useStore = create<AppState>()((set, get) => ({
     const payment = state.payments.find(p => p.id === id);
     if (!payment) return;
     
+    const tenant = state.tenants.find(t => t.id === payment.tenantId);
+    
+    // Total amount to apply = direct payment + advance used
+    const totalToApply = amount + useAdvance;
+    
     // Get all unpaid payments for this tenant, sorted oldest first
     const tenantPayments = state.payments
       .filter(p => p.tenantId === payment.tenantId && p.paidAmount < p.totalAmount)
       .sort((a, b) => a.month.localeCompare(b.month));
     
-    let remainingAmount = amount;
+    let remainingAmount = totalToApply;
     const updates: Record<string, any> = {};
     
     // Settle oldest payments first
@@ -419,6 +424,12 @@ export const useStore = create<AppState>()((set, get) => ({
       updates[`users/${userId}/payments/${p.id}/paymentMethod`] = paymentMethod;
       
       remainingAmount -= amountToApply;
+    }
+    
+    // If advance was used, deduct from tenant's advance balance
+    if (useAdvance > 0 && tenant) {
+      const newAdvance = Math.max(0, tenant.advancePaid - useAdvance);
+      updates[`users/${userId}/tenants/${tenant.id}/advancePaid`] = newAdvance;
     }
     
     if (Object.keys(updates).length > 0) {
