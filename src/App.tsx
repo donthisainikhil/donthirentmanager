@@ -26,13 +26,9 @@ function FirebaseInitializer({ children }: { children: React.ReactNode }) {
   const resetStore = useStore((state) => state.resetStore);
   
   useEffect(() => {
-    console.log('[FirebaseInitializer] User:', user?.uid, 'isApproved:', isApproved);
-    
     if (user && isApproved) {
-      console.log('[FirebaseInitializer] Initializing store for user:', user.uid);
       initializeData(user.uid);
     } else {
-      console.log('[FirebaseInitializer] Resetting store');
       resetStore();
     }
   }, [user?.uid, isApproved, initializeData, resetStore]);

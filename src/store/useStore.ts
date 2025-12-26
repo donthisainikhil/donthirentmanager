@@ -93,7 +93,6 @@ export const useStore = create<AppState>()((set, get) => ({
   
   // Reset store when user logs out
   resetStore: () => {
-    console.log('[Store] resetStore called');
     // Unsubscribe from all Firebase listeners
     unsubscribeFunctions.forEach(unsub => unsub());
     unsubscribeFunctions = [];
@@ -116,19 +115,13 @@ export const useStore = create<AppState>()((set, get) => ({
   initializeData: (userId: string) => {
     const state = get();
     
-    console.log('[Store] initializeData called for:', userId, 'current:', state.currentUserId, 'initialized:', state.initialized);
-    
     // If already initialized for this user, skip
     if (state.initialized && state.currentUserId === userId) {
-      console.log('[Store] Already initialized for this user, skipping');
       return;
     }
     
-    console.log('[Store] Proceeding with initialization for user:', userId);
-    
     // Clean up any existing listeners before setting up new ones
     if (unsubscribeFunctions.length > 0) {
-      console.log('[Store] Cleaning up existing listeners');
       unsubscribeFunctions.forEach(unsub => unsub());
       unsubscribeFunctions = [];
     }
@@ -146,11 +139,8 @@ export const useStore = create<AppState>()((set, get) => ({
       currentUserId: userId,
     });
     
-    console.log('[Store] State reset, currentUserId set to:', userId);
-    
     // User-specific paths
     const basePath = `users/${userId}`;
-    console.log('[Store] Firebase base path:', basePath);
     
     const propertiesRef = ref(database, `${basePath}/properties`);
     const unitsRef = ref(database, `${basePath}/units`);
@@ -162,29 +152,19 @@ export const useStore = create<AppState>()((set, get) => ({
     // Listen for properties changes
     onValue(propertiesRef, (snapshot) => {
       const data = snapshot.val();
-      console.log('[Store] Properties data received:', data);
       set({ properties: objectToArray(data), loading: false, initialized: true });
-    }, (error) => {
-      console.error('[Store] Properties listener error:', error);
-      set({ loading: false, initialized: true });
     });
     
     // Listen for units changes
     onValue(unitsRef, (snapshot) => {
       const data = snapshot.val();
-      console.log('[Store] Units data received:', data);
       set({ units: objectToArray(data) });
-    }, (error) => {
-      console.error('[Store] Units listener error:', error);
     });
     
     // Listen for tenants changes
     onValue(tenantsRef, (snapshot) => {
       const data = snapshot.val();
-      console.log('[Store] Tenants data received:', data);
       set({ tenants: objectToArray(data) });
-    }, (error) => {
-      console.error('[Store] Tenants listener error:', error);
     });
     
     // Listen for payments changes
@@ -192,24 +172,18 @@ export const useStore = create<AppState>()((set, get) => ({
       const data = snapshot.val();
       const payments = objectToArray<RentPayment>(data);
       set({ payments });
-    }, (error) => {
-      console.error('[Store] Payments listener error:', error);
     });
     
     // Listen for expenses changes
     onValue(expensesRef, (snapshot) => {
       const data = snapshot.val();
       set({ expenses: objectToArray(data) });
-    }, (error) => {
-      console.error('[Store] Expenses listener error:', error);
     });
     
     // Listen for monthly statuses changes
     onValue(monthlyStatusesRef, (snapshot) => {
       const data = snapshot.val();
       set({ monthlyStatuses: objectToArray(data) });
-    }, (error) => {
-      console.error('[Store] Monthly statuses listener error:', error);
     });
     
     // Store unsubscribe functions
@@ -226,11 +200,7 @@ export const useStore = create<AppState>()((set, get) => ({
   // Property actions
   addProperty: async (property) => {
     const userId = get().currentUserId;
-    console.log('[Store] addProperty called, currentUserId:', userId);
-    if (!userId) {
-      console.error('[Store] addProperty failed - User not authenticated');
-      throw new Error('User not authenticated');
-    }
+    if (!userId) throw new Error('User not authenticated');
     
     const id = uuidv4();
     const newProperty: Property = { 
@@ -238,9 +208,7 @@ export const useStore = create<AppState>()((set, get) => ({
       id, 
       createdAt: new Date().toISOString() 
     };
-    console.log('[Store] Writing property to Firebase:', `users/${userId}/properties/${id}`);
     await firebaseSet(ref(database, `users/${userId}/properties/${id}`), newProperty);
-    console.log('[Store] Property added successfully');
   },
   
   updateProperty: async (id, property) => {
