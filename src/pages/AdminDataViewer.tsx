@@ -16,8 +16,6 @@ import {
 } from 'lucide-react';
 
 import { database } from '@/lib/firebase';
-import { toast } from 'sonner';
-
 import { Layout } from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
@@ -53,99 +51,48 @@ export default function AdminDataViewer() {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoadError(null);
+    if (!isAdmin) return;
 
-    if (!isAdmin) {
-      setProfilesLoading(false);
-      setDataLoading(false);
-      return;
-    }
-
-    // Reset loading flags when admin status becomes available
-    setProfilesLoading(true);
-    setDataLoading(true);
-
-    // Safety timeouts: prevent infinite spinner if Firebase denies reads
-    const profilesTimeoutId = window.setTimeout(() => {
-      setProfilesLoading(false);
-      setLoadError((prev) => prev ?? 'Profiles could not be loaded. Please verify database permissions.');
-    }, 8000);
-
-    const dataTimeoutId = window.setTimeout(() => {
-      setDataLoading(false);
-      setLoadError((prev) => prev ?? 'User data could not be loaded. Please verify database permissions.');
-    }, 8000);
-
-    // Load all profiles from Firebase
     const profilesRef = ref(database, 'profiles');
-    const unsubProfiles = onValue(
-      profilesRef,
-      (snapshot) => {
-        window.clearTimeout(profilesTimeoutId);
-
-        if (snapshot.exists()) {
-          const profilesData = snapshot.val();
-          const list = Object.values(profilesData) as ProfileRecord[];
-          list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-          setProfiles(list);
-        } else {
-          setProfiles([]);
-        }
-
-        setProfilesLoading(false);
-      },
-      () => {
-        window.clearTimeout(profilesTimeoutId);
-        setProfiles([]);
-        setProfilesLoading(false);
-        setLoadError('Unable to read user profiles from the database.');
-        toast.error('Unable to load users list');
-      },
-    );
-
-    // Load all users' data from Firebase
     const usersRef = ref(database, 'users');
-    const unsubUsers = onValue(
-      usersRef,
-      (snapshot) => {
-        window.clearTimeout(dataTimeoutId);
 
-        if (snapshot.exists()) {
-          const allUsersData = snapshot.val() as Record<string, any>;
-          const processedData: Record<string, UserData> = {};
+    const unsubProfiles = onValue(profilesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const profilesData = snapshot.val();
+        const list = Object.values(profilesData) as ProfileRecord[];
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setProfiles(list);
+      } else {
+        setProfiles([]);
+      }
+      setProfilesLoading(false);
+    });
 
-          Object.entries(allUsersData).forEach(([userId, userData]) => {
-            processedData[userId] = {
-              properties: userData?.properties ? Object.values(userData.properties) : [],
-              units: userData?.units ? Object.values(userData.units) : [],
-              tenants: userData?.tenants ? Object.values(userData.tenants) : [],
-              payments: userData?.payments ? Object.values(userData.payments) : [],
-              expenses: userData?.expenses ? Object.values(userData.expenses) : [],
-            };
-          });
+    const unsubUsers = onValue(usersRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const allUsersData = snapshot.val() as Record<string, any>;
+        const processedData: Record<string, UserData> = {};
 
-          setUsersData(processedData);
-        } else {
-          setUsersData({});
-        }
+        Object.entries(allUsersData).forEach(([userId, userData]) => {
+          processedData[userId] = {
+            properties: userData?.properties ? Object.values(userData.properties) : [],
+            units: userData?.units ? Object.values(userData.units) : [],
+            tenants: userData?.tenants ? Object.values(userData.tenants) : [],
+            payments: userData?.payments ? Object.values(userData.payments) : [],
+            expenses: userData?.expenses ? Object.values(userData.expenses) : [],
+          };
+        });
 
-        setDataLoading(false);
-      },
-      () => {
-        window.clearTimeout(dataTimeoutId);
+        setUsersData(processedData);
+      } else {
         setUsersData({});
-        setDataLoading(false);
-        setLoadError('Unable to read users data from the database.');
-        toast.error('Unable to load admin data');
-      },
-    );
+      }
+      setDataLoading(false);
+    });
 
     return () => {
-      window.clearTimeout(profilesTimeoutId);
-      window.clearTimeout(dataTimeoutId);
       unsubProfiles();
       unsubUsers();
     };
@@ -337,13 +284,6 @@ export default function AdminDataViewer() {
           <div className="flex justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        ) : loadError ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Unable to load admin data</CardTitle>
-              <CardDescription>{loadError}</CardDescription>
-            </CardHeader>
-          </Card>
         ) : (
           <Tabs defaultValue="properties" className="w-full">
             <TabsList className="grid w-full grid-cols-5">
