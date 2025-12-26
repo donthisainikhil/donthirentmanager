@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { IndianRupee, CheckCircle2, Clock, AlertCircle, Filter, Plus, Building2 } from 'lucide-react';
+import { IndianRupee, CheckCircle2, Clock, AlertCircle, Filter, Plus, Building2, Wallet } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Layout } from '@/components/Layout';
 import { MonthSelector } from '@/components/MonthSelector';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RecordPaymentDialog } from '@/components/RecordPaymentDialog';
+import { AdvancePaymentDialog } from '@/components/AdvancePaymentDialog';
 import { getEffectiveStatus } from '@/hooks/useDashboardStats';
 
 export default function Payments() {
@@ -27,6 +28,7 @@ export default function Payments() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [activeTab, setActiveTab] = useState<string>('payments');
+  const [showAdvanceDialog, setShowAdvanceDialog] = useState(false);
   const currentMonth = getCurrentMonth();
 
   // Apply effective status to all payments
@@ -87,7 +89,13 @@ export default function Payments() {
             <h1 className="text-2xl lg:text-3xl font-bold">Payments</h1>
             <p className="text-muted-foreground">Track rent payments for {formatMonth(selectedMonth)}</p>
           </div>
-          <MonthSelector />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowAdvanceDialog(true)}>
+              <Wallet className="w-4 h-4 mr-2" />
+              Record Advance
+            </Button>
+            <MonthSelector />
+          </div>
         </div>
 
         {/* Stats */}
@@ -355,6 +363,13 @@ export default function Payments() {
           month={selectedMonth}
         />
       )}
+
+      {/* Advance Payment Dialog */}
+      <AdvancePaymentDialog
+        open={showAdvanceDialog}
+        onOpenChange={setShowAdvanceDialog}
+        month={selectedMonth}
+      />
     </Layout>
   );
 }
