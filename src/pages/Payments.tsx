@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { IndianRupee, CheckCircle2, Clock, AlertCircle, Filter } from 'lucide-react';
+import { IndianRupee, CheckCircle2, Clock, AlertCircle, Filter, Plus, Building2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Layout } from '@/components/Layout';
 import { MonthSelector } from '@/components/MonthSelector';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PaymentDialog } from '@/components/PaymentDialog';
 import { formatCurrency, formatMonth } from '@/lib/formatters';
-import { RentPayment } from '@/types';
+import { RentPayment, Unit } from '@/types';
 import {
   Select,
   SelectContent,
@@ -17,11 +17,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RecordPaymentDialog } from '@/components/RecordPaymentDialog';
 
 export default function Payments() {
   const { payments, tenants, units, properties, selectedMonth } = useStore();
   const [selectedPayment, setSelectedPayment] = useState<RentPayment | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('payments');
 
   const monthPayments = payments
     .filter(p => p.month === selectedMonth)
@@ -33,6 +37,24 @@ export default function Payments() {
     pending: monthPayments.filter(p => p.status === 'pending' || p.status === 'partial').length,
     overdue: monthPayments.filter(p => p.status === 'overdue').length,
   };
+
+  // Get units with their payment status for the selected month
+  const unitsWithPaymentStatus = useMemo(() => {
+    return units.map(unit => {
+      const tenant = tenants.find(t => t.unitId === unit.id);
+      const property = properties.find(p => p.id === unit.propertyId);
+      const payment = payments.find(p => p.unitId === unit.id && p.month === selectedMonth);
+      
+      return {
+        unit,
+        tenant,
+        property,
+        payment,
+        hasPayment: !!payment,
+        isPaid: payment?.status === 'paid',
+      };
+    }).filter(item => item.unit.isOccupied); // Only show occupied units
+  }, [units, tenants, properties, payments, selectedMonth]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -85,124 +107,232 @@ export default function Payments() {
           </Card>
         </div>
 
-        {/* Filter */}
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground" />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Payments</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="partial">Partial</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="payments">Payment Records</TabsTrigger>
+            <TabsTrigger value="units">By Unit</TabsTrigger>
+          </TabsList>
 
-        {/* Payments List */}
-        <div className="space-y-3">
-          {monthPayments.map((payment, index) => {
-            const tenant = tenants.find(t => t.id === payment.tenantId);
-            const unit = units.find(u => u.id === payment.unitId);
-            const property = properties.find(p => p.id === payment.propertyId);
-            const remaining = payment.totalAmount - payment.paidAmount;
-
-            return (
-              <motion.div
-                key={payment.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.03 }}
-              >
-                <Card hover onClick={() => payment.status !== 'paid' && setSelectedPayment(payment)}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={`p-2 rounded-full ${
-                          payment.status === 'paid' ? 'bg-success/10' :
-                          payment.status === 'overdue' ? 'bg-danger/10' :
-                          'bg-warning/10'
-                        }`}>
-                          {getStatusIcon(payment.status)}
-                        </div>
-                        <div>
-                          <p className="font-semibold">{tenant?.firstName} {tenant?.lastName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {property?.name} • Unit {unit?.unitNumber}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-2 justify-end">
-                          <p className="font-bold text-lg">{formatCurrency(payment.totalAmount)}</p>
-                          <Badge variant={payment.status as any}>{payment.status}</Badge>
-                        </div>
-                        {payment.status !== 'paid' && (
-                          <p className="text-sm text-muted-foreground">
-                            Due: {formatCurrency(remaining)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between text-sm border-t pt-3">
-                      <div className="flex gap-4">
-                        <span className="text-muted-foreground">
-                          Rent: {formatCurrency(payment.rentAmount)}
-                        </span>
-                        <span className="text-muted-foreground">
-                          Water: {formatCurrency(payment.waterBill)}
-                        </span>
-                      </div>
-                      {payment.status !== 'paid' && (
-                        <Button 
-                          size="sm" 
-                          variant="success"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedPayment(payment);
-                          }}
-                        >
-                          <IndianRupee className="w-3 h-3 mr-1" />
-                          Record Payment
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Empty State */}
-        {monthPayments.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center py-12"
-          >
-            <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-              <IndianRupee className="w-8 h-8 text-muted-foreground" />
+          <TabsContent value="payments" className="space-y-4">
+            {/* Filter */}
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-muted-foreground" />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Payments</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="partial">Partial</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <h3 className="text-lg font-semibold mb-2">No Payments for {formatMonth(selectedMonth)}</h3>
-            <p className="text-muted-foreground">
-              {statusFilter !== 'all' 
-                ? 'No payments match the selected filter'
-                : 'Start the month from Dashboard to generate payment records'}
-            </p>
-          </motion.div>
-        )}
+
+            {/* Payments List */}
+            <div className="space-y-3">
+              {monthPayments.map((payment, index) => {
+                const tenant = tenants.find(t => t.id === payment.tenantId);
+                const unit = units.find(u => u.id === payment.unitId);
+                const property = properties.find(p => p.id === payment.propertyId);
+                const remaining = payment.totalAmount - payment.paidAmount;
+
+                return (
+                  <motion.div
+                    key={payment.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                  >
+                    <Card hover onClick={() => payment.status !== 'paid' && setSelectedPayment(payment)}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className={`p-2 rounded-full ${
+                              payment.status === 'paid' ? 'bg-success/10' :
+                              payment.status === 'overdue' ? 'bg-danger/10' :
+                              'bg-warning/10'
+                            }`}>
+                              {getStatusIcon(payment.status)}
+                            </div>
+                            <div>
+                              <p className="font-semibold">{tenant?.firstName} {tenant?.lastName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {property?.name} • Unit {unit?.unitNumber}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-2 justify-end">
+                              <p className="font-bold text-lg">{formatCurrency(payment.totalAmount)}</p>
+                              <Badge variant={payment.status as any}>{payment.status}</Badge>
+                            </div>
+                            {payment.status !== 'paid' && (
+                              <p className="text-sm text-muted-foreground">
+                                Due: {formatCurrency(remaining)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-sm border-t pt-3">
+                          <div className="flex gap-4">
+                            <span className="text-muted-foreground">
+                              Rent: {formatCurrency(payment.rentAmount)}
+                            </span>
+                            <span className="text-muted-foreground">
+                              Water: {formatCurrency(payment.waterBill)}
+                            </span>
+                          </div>
+                          {payment.status !== 'paid' && (
+                            <Button 
+                              size="sm" 
+                              variant="success"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPayment(payment);
+                              }}
+                            >
+                              <IndianRupee className="w-3 h-3 mr-1" />
+                              Record Payment
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Empty State */}
+            {monthPayments.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center py-12"
+              >
+                <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+                  <IndianRupee className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Payments for {formatMonth(selectedMonth)}</h3>
+                <p className="text-muted-foreground">
+                  {statusFilter !== 'all' 
+                    ? 'No payments match the selected filter'
+                    : 'Start the month from Dashboard to generate payment records'}
+                </p>
+              </motion.div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="units" className="space-y-4">
+            {/* Units List */}
+            <div className="space-y-3">
+              {unitsWithPaymentStatus.map((item, index) => (
+                <motion.div
+                  key={item.unit.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                >
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded-full ${
+                            item.isPaid ? 'bg-success/10' :
+                            item.hasPayment ? 'bg-warning/10' :
+                            'bg-muted'
+                          }`}>
+                            {item.isPaid ? (
+                              <CheckCircle2 className="w-4 h-4 text-success" />
+                            ) : item.hasPayment ? (
+                              <Clock className="w-4 h-4 text-warning" />
+                            ) : (
+                              <Building2 className="w-4 h-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-semibold">
+                              {item.property?.name} - Unit {item.unit.unitNumber}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {item.tenant ? `${item.tenant.firstName} ${item.tenant.lastName}` : 'No tenant'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="font-bold">{formatCurrency(item.unit.monthlyRent)}</p>
+                            <p className="text-xs text-muted-foreground">Monthly Rent</p>
+                          </div>
+                          {item.isPaid ? (
+                            <Badge variant="default" className="bg-success">Paid</Badge>
+                          ) : item.hasPayment ? (
+                            <Button 
+                              size="sm" 
+                              variant="success"
+                              onClick={() => setSelectedPayment(item.payment!)}
+                            >
+                              <IndianRupee className="w-3 h-3 mr-1" />
+                              Record
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => setSelectedUnit(item.unit)}
+                            >
+                              <Plus className="w-3 h-3 mr-1" />
+                              Add Payment
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Empty State */}
+            {unitsWithPaymentStatus.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center py-12"
+              >
+                <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+                  <Building2 className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Occupied Units</h3>
+                <p className="text-muted-foreground">
+                  Add tenants to your units to track payments
+                </p>
+              </motion.div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
-      {/* Payment Dialog */}
+      {/* Payment Dialog for existing payments */}
       {selectedPayment && (
         <PaymentDialog
           open={!!selectedPayment}
           onOpenChange={() => setSelectedPayment(null)}
           payment={selectedPayment}
+        />
+      )}
+
+      {/* Record Payment Dialog for units without payment record */}
+      {selectedUnit && (
+        <RecordPaymentDialog
+          open={!!selectedUnit}
+          onOpenChange={() => setSelectedUnit(null)}
+          unit={selectedUnit}
+          month={selectedMonth}
         />
       )}
     </Layout>
