@@ -6,18 +6,20 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useStore } from '@/store/useStore';
 import { toast } from 'sonner';
+import { UnitType, UNIT_TYPE_LABELS } from '@/types';
 
 interface UnitFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   propertyId?: string;
-  unit?: { id: string; unitNumber: string; monthlyRent: number; propertyId: string };
+  unit?: { id: string; unitNumber: string; type?: UnitType; monthlyRent: number; propertyId: string };
 }
 
 export function UnitFormDialog({ open, onOpenChange, propertyId, unit }: UnitFormDialogProps) {
   const { properties, addUnit, updateUnit } = useStore();
   const [selectedPropertyId, setSelectedPropertyId] = useState('');
   const [unitNumber, setUnitNumber] = useState('');
+  const [unitType, setUnitType] = useState<UnitType>('single_room');
   const [monthlyRent, setMonthlyRent] = useState('');
 
   // Reset form when dialog opens or propertyId/unit changes
@@ -25,6 +27,7 @@ export function UnitFormDialog({ open, onOpenChange, propertyId, unit }: UnitFor
     if (open) {
       setSelectedPropertyId(unit?.propertyId || propertyId || '');
       setUnitNumber(unit?.unitNumber || '');
+      setUnitType(unit?.type || 'single_room');
       setMonthlyRent(unit?.monthlyRent?.toString() || '');
     }
   }, [open, propertyId, unit]);
@@ -38,12 +41,13 @@ export function UnitFormDialog({ open, onOpenChange, propertyId, unit }: UnitFor
     }
 
     if (unit) {
-      updateUnit(unit.id, { unitNumber, monthlyRent: parseFloat(monthlyRent) });
+      updateUnit(unit.id, { unitNumber, type: unitType, monthlyRent: parseFloat(monthlyRent) });
       toast.success('Unit updated successfully');
     } else {
       addUnit({ 
         propertyId: selectedPropertyId, 
         unitNumber, 
+        type: unitType,
         monthlyRent: parseFloat(monthlyRent),
         isOccupied: false
       });
@@ -52,6 +56,7 @@ export function UnitFormDialog({ open, onOpenChange, propertyId, unit }: UnitFor
 
     onOpenChange(false);
     setUnitNumber('');
+    setUnitType('single_room');
     setMonthlyRent('');
   };
 
@@ -68,7 +73,7 @@ export function UnitFormDialog({ open, onOpenChange, propertyId, unit }: UnitFor
               <SelectTrigger>
                 <SelectValue placeholder="Select property" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-background border shadow-lg z-50">
                 {properties.map((property) => (
                   <SelectItem key={property.id} value={property.id}>
                     {property.name}
@@ -85,6 +90,21 @@ export function UnitFormDialog({ open, onOpenChange, propertyId, unit }: UnitFor
               value={unitNumber}
               onChange={(e) => setUnitNumber(e.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Unit Type</Label>
+            <Select value={unitType} onValueChange={(value) => setUnitType(value as UnitType)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select unit type" />
+              </SelectTrigger>
+              <SelectContent className="bg-background border shadow-lg z-50">
+                {(Object.keys(UNIT_TYPE_LABELS) as UnitType[]).map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {UNIT_TYPE_LABELS[type]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="rent">Monthly Rent (₹)</Label>

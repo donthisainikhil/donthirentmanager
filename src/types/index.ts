@@ -6,10 +6,30 @@ export interface Property {
   createdAt: string;
 }
 
+export type UnitType = 
+  | 'single_room' 
+  | 'single_bedroom' 
+  | 'double_bedroom' 
+  | 'three_bedroom' 
+  | 'shed' 
+  | 'land_lease' 
+  | 'commercial_space';
+
+export const UNIT_TYPE_LABELS: Record<UnitType, string> = {
+  single_room: 'Single Room',
+  single_bedroom: 'Single Bedroom',
+  double_bedroom: 'Double Bedroom',
+  three_bedroom: 'Three Bedroom',
+  shed: 'Shed',
+  land_lease: 'Land Lease',
+  commercial_space: 'Commercial Space',
+};
+
 export interface Unit {
   id: string;
   propertyId: string;
   unitNumber: string;
+  type: UnitType;
   monthlyRent: number;
   isOccupied: boolean;
   tenantId?: string;
