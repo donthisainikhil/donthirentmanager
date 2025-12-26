@@ -8,11 +8,14 @@ import {
   IndianRupee, 
   Receipt, 
   Menu,
-  X
+  X,
+  Shield,
+  LogOut
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface LayoutProps {
   children: ReactNode;
@@ -29,6 +32,11 @@ const navItems = [
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { isAdmin, signOut, profile } = useAuth();
+
+  const allNavItems = isAdmin 
+    ? [...navItems, { path: '/access', icon: Shield, label: 'Access' }]
+    : navItems;
 
   return (
     <div className="min-h-screen bg-background">
@@ -72,7 +80,7 @@ export function Layout({ children }: LayoutProps) {
           className="lg:hidden fixed left-0 top-16 bottom-0 z-40 w-64 bg-card border-r shadow-lg safe-area-bottom"
         >
           <div className="p-4 space-y-2">
-            {navItems.map((item) => {
+            {allNavItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
                 <Link
@@ -91,6 +99,16 @@ export function Layout({ children }: LayoutProps) {
                 </Link>
               );
             })}
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                signOut();
+              }}
+              className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 w-full hover:bg-destructive/10 text-destructive"
+            >
+              <LogOut className="w-5 h-5" />
+              <span className="font-medium">Sign Out</span>
+            </button>
           </div>
         </motion.nav>
       )}
@@ -109,7 +127,7 @@ export function Layout({ children }: LayoutProps) {
           </Link>
         </div>
         <nav className="flex-1 p-4 space-y-2">
-          {navItems.map((item) => {
+          {allNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <Link
@@ -128,7 +146,28 @@ export function Layout({ children }: LayoutProps) {
             );
           })}
         </nav>
-        <div className="p-4 border-t">
+        <div className="p-4 border-t space-y-3">
+          {profile && (
+            <div className="flex items-center gap-3 px-2">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-sm font-medium text-primary">
+                  {profile.full_name?.charAt(0) || profile.email.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{profile.full_name || 'User'}</p>
+                <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
+              </div>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={signOut}
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Sign Out
+          </Button>
           <div className="bg-muted rounded-lg p-4">
             <p className="text-xs text-muted-foreground text-center">
               © 2024 Donthi's Rents
@@ -147,7 +186,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-card border-t safe-area-bottom">
         <div className="flex items-center justify-around px-2 py-2">
-          {navItems.map((item) => {
+          {allNavItems.slice(0, 5).map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <Link
