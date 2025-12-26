@@ -151,56 +151,11 @@ export const useStore = create<AppState>()((set, get) => ({
       set({ tenants: objectToArray(data) });
     });
     
-    // Listen for payments changes and auto-update overdue status
-    const paymentsUnsub = onValue(paymentsRef, async (snapshot) => {
+    // Listen for payments changes
+    const paymentsUnsub = onValue(paymentsRef, (snapshot) => {
       const data = snapshot.val();
       const payments = objectToArray<RentPayment>(data);
-      
-      // Check and update overdue payments
-      // Rent is due by 10th of every month - anything not paid by 10th is overdue
-      const now = new Date();
-      const paymentsToUpdate: { id: string; status: 'overdue' }[] = [];
-      
-      payments.forEach(payment => {
-        // Parse payment month to get the due date (10th of that month)
-        const [year, month] = payment.month.split('-').map(Number);
-        const dueDate = new Date(year, month - 1, 10, 23, 59, 59);
-        
-        // If payment is not fully paid and we're past the 10th, mark as overdue
-        if (
-          payment.paidAmount < payment.totalAmount &&
-          now > dueDate &&
-          payment.status !== 'overdue'
-        ) {
-          paymentsToUpdate.push({ id: payment.id, status: 'overdue' });
-        }
-      });
-      
-      // Update overdue payments in Firebase (batch update)
-      if (paymentsToUpdate.length > 0) {
-        const updates: Record<string, any> = {};
-        paymentsToUpdate.forEach(({ id }) => {
-          updates[`${basePath}/payments/${id}/status`] = 'overdue';
-        });
-        await firebaseUpdate(ref(database), updates);
-      }
-      
-      // Update local state with corrected statuses
-      const updatedPayments = payments.map(payment => {
-        const [year, month] = payment.month.split('-').map(Number);
-        const dueDate = new Date(year, month - 1, 10, 23, 59, 59);
-        
-        if (
-          payment.paidAmount < payment.totalAmount &&
-          now > dueDate &&
-          payment.status !== 'overdue'
-        ) {
-          return { ...payment, status: 'overdue' as const };
-        }
-        return payment;
-      });
-      
-      set({ payments: updatedPayments });
+      set({ payments });
     });
     
     // Listen for expenses changes
@@ -358,12 +313,6 @@ export const useStore = create<AppState>()((set, get) => ({
         const waterBill = tenant.monthlyWaterBill;
         const totalAmount = rentAmount + waterBill;
         
-        // Check if payment is overdue (past 10th of the month)
-        const now = new Date();
-        const [year, monthNum] = currentMonth.split('-').map(Number);
-        const dueDate = new Date(year, monthNum - 1, 10, 23, 59, 59);
-        const status = now > dueDate ? 'overdue' : 'pending';
-        
         const paymentId = uuidv4();
         const newPayment: RentPayment = {
           id: paymentId,
@@ -375,7 +324,7 @@ export const useStore = create<AppState>()((set, get) => ({
           waterBill,
           totalAmount,
           paidAmount: 0,
-          status,
+          status: 'pending',
           createdAt: new Date().toISOString()
         };
         
@@ -437,22 +386,41 @@ export const useStore = create<AppState>()((set, get) => ({
     await firebaseUpdate(ref(database, `users/${userId}/payments/${id}`), payment);
   },
   
+  // Mark payment as paid - settles oldest overdue first for the same tenant
   markPaymentPaid: async (id, amount) => {
     const state = get();
     const userId = state.currentUserId;
     if (!userId) throw new Error('User not authenticated');
     
     const payment = state.payments.find(p => p.id === id);
+    if (!payment) return;
     
-    if (payment) {
-      const newPaidAmount = payment.paidAmount + amount;
-      const status = newPaidAmount >= payment.totalAmount ? 'paid' : 'partial';
+    // Get all unpaid payments for this tenant, sorted oldest first
+    const tenantPayments = state.payments
+      .filter(p => p.tenantId === payment.tenantId && p.paidAmount < p.totalAmount)
+      .sort((a, b) => a.month.localeCompare(b.month));
+    
+    let remainingAmount = amount;
+    const updates: Record<string, any> = {};
+    
+    // Settle oldest payments first
+    for (const p of tenantPayments) {
+      if (remainingAmount <= 0) break;
       
-      await firebaseUpdate(ref(database, `users/${userId}/payments/${id}`), {
-        paidAmount: newPaidAmount,
-        paidDate: new Date().toISOString(),
-        status
-      });
+      const unpaidBalance = p.totalAmount - p.paidAmount;
+      const amountToApply = Math.min(remainingAmount, unpaidBalance);
+      const newPaidAmount = p.paidAmount + amountToApply;
+      const status = newPaidAmount >= p.totalAmount ? 'paid' : 'partial';
+      
+      updates[`users/${userId}/payments/${p.id}/paidAmount`] = newPaidAmount;
+      updates[`users/${userId}/payments/${p.id}/paidDate`] = new Date().toISOString();
+      updates[`users/${userId}/payments/${p.id}/status`] = status;
+      
+      remainingAmount -= amountToApply;
+    }
+    
+    if (Object.keys(updates).length > 0) {
+      await firebaseUpdate(ref(database), updates);
     }
   },
   
@@ -537,12 +505,6 @@ export const useStore = create<AppState>()((set, get) => ({
       const waterBill = tenant.monthlyWaterBill;
       const totalAmount = rentAmount + waterBill;
       
-      // Check if payment is overdue (past 10th of the payment month)
-      const now = new Date();
-      const [year, monthNum] = month.split('-').map(Number);
-      const dueDate = new Date(year, monthNum - 1, 10, 23, 59, 59);
-      const status = now > dueDate ? 'overdue' : 'pending';
-      
       const id = uuidv4();
       const newPayment: RentPayment = {
         id,
@@ -554,7 +516,7 @@ export const useStore = create<AppState>()((set, get) => ({
         waterBill,
         totalAmount,
         paidAmount: 0,
-        status,
+        status: 'pending',
         createdAt: new Date().toISOString()
       };
       

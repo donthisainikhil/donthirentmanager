@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PaymentDialog } from '@/components/PaymentDialog';
-import { formatCurrency, formatMonth } from '@/lib/formatters';
+import { formatCurrency, formatMonth, getCurrentMonth } from '@/lib/formatters';
 import { RentPayment, Unit } from '@/types';
 import {
   Select,
@@ -19,19 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RecordPaymentDialog } from '@/components/RecordPaymentDialog';
-import { isAfter, parse } from 'date-fns';
-
-// Helper to get effective status (rent is due by 10th of each month)
-const getEffectiveStatus = (payment: RentPayment): RentPayment['status'] => {
-  const now = new Date();
-  const paymentMonth = parse(payment.month, 'yyyy-MM', new Date());
-  const dueDate = new Date(paymentMonth.getFullYear(), paymentMonth.getMonth(), 10, 23, 59, 59);
-  
-  if (payment.paidAmount < payment.totalAmount && isAfter(now, dueDate)) {
-    return 'overdue';
-  }
-  return payment.status;
-};
+import { getEffectiveStatus } from '@/hooks/useDashboardStats';
 
 export default function Payments() {
   const { payments, tenants, units, properties, selectedMonth } = useStore();
@@ -39,14 +27,15 @@ export default function Payments() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [activeTab, setActiveTab] = useState<string>('payments');
+  const currentMonth = getCurrentMonth();
 
   // Apply effective status to all payments
   const paymentsWithEffectiveStatus = useMemo(() => {
     return payments.map(p => ({
       ...p,
-      effectiveStatus: getEffectiveStatus(p)
+      effectiveStatus: getEffectiveStatus(p, currentMonth)
     }));
-  }, [payments]);
+  }, [payments, currentMonth]);
 
   const monthPayments = paymentsWithEffectiveStatus
     .filter(p => p.month === selectedMonth)

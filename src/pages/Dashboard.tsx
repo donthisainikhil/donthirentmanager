@@ -13,8 +13,8 @@ import {
   CalendarClock
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { useDashboardStats, usePropertyStats, useExpenseStats } from '@/hooks/useDashboardStats';
-import { formatCurrency, formatMonth } from '@/lib/formatters';
+import { useDashboardStats, usePropertyStats, useExpenseStats, getEffectiveStatus } from '@/hooks/useDashboardStats';
+import { formatCurrency, formatMonth, getCurrentMonth } from '@/lib/formatters';
 import { Layout } from '@/components/Layout';
 import { MonthSelector } from '@/components/MonthSelector';
 import { StatCard } from '@/components/StatCard';
@@ -23,26 +23,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { parse, differenceInDays } from 'date-fns';
+import { RentPayment } from '@/types';
 
-// Helper to get days info for a payment
-const getDueDateInfo = (month: string, status: string, paidAmount: number, totalAmount: number) => {
-  if (status === 'paid' || paidAmount >= totalAmount) {
+// Helper to get carry forward info for overdue payments
+const getCarryForwardInfo = (payment: RentPayment, currentMonth: string) => {
+  if (payment.paidAmount >= payment.totalAmount) {
     return null;
   }
   
-  const now = new Date();
-  const paymentMonth = parse(month, 'yyyy-MM', new Date());
-  const dueDate = new Date(paymentMonth.getFullYear(), paymentMonth.getMonth(), 10, 23, 59, 59);
-  const daysDiff = differenceInDays(dueDate, now);
-  
-  if (daysDiff > 0) {
-    return { type: 'remaining', days: daysDiff };
-  } else if (daysDiff === 0) {
-    return { type: 'today', days: 0 };
-  } else {
-    return { type: 'overdue', days: Math.abs(daysDiff) };
+  // If payment month is before current month, show months overdue
+  if (payment.month < currentMonth) {
+    const [payYear, payMonth] = payment.month.split('-').map(Number);
+    const [curYear, curMonth] = currentMonth.split('-').map(Number);
+    const monthsDiff = (curYear - payYear) * 12 + (curMonth - payMonth);
+    return { type: 'overdue' as const, months: monthsDiff };
   }
+  
+  return { type: 'current' as const, months: 0 };
 };
 
 interface TenantListDialogProps {
@@ -108,6 +105,7 @@ export default function Dashboard() {
     tenants
   } = useStore();
   
+  const currentMonth = getCurrentMonth();
   const stats = useDashboardStats(selectedMonth);
   const propertyStats = usePropertyStats(selectedMonth);
   const expenseStats = useExpenseStats(selectedMonth);
@@ -118,8 +116,8 @@ export default function Dashboard() {
   const monthStatus = monthlyStatuses.find(m => m.month === selectedMonth);
   const monthPayments = payments.filter(p => p.month === selectedMonth);
   
-  const paidTenantIds = monthPayments.filter(p => p.status === 'paid').map(p => p.tenantId);
-  const pendingTenantIds = monthPayments.filter(p => p.status !== 'paid').map(p => p.tenantId);
+  const paidTenantIds = monthPayments.filter(p => getEffectiveStatus(p, currentMonth) === 'paid').map(p => p.tenantId);
+  const pendingTenantIds = monthPayments.filter(p => getEffectiveStatus(p, currentMonth) !== 'paid').map(p => p.tenantId);
 
   const handleStartMonth = () => {
     startMonth(selectedMonth);
@@ -342,7 +340,8 @@ export default function Dashboard() {
                     const tenant = tenants.find(t => t.id === payment.tenantId);
                     const unit = units.find(u => u.id === payment.unitId);
                     const property = properties.find(p => p.id === payment.propertyId);
-                    const dueDateInfo = getDueDateInfo(payment.month, payment.status, payment.paidAmount, payment.totalAmount);
+                    const effectiveStatus = getEffectiveStatus(payment, currentMonth);
+                    const carryInfo = getCarryForwardInfo(payment, currentMonth);
                     
                     return (
                       <div
@@ -351,13 +350,13 @@ export default function Dashboard() {
                       >
                         <div className="flex items-center gap-3">
                           <div className={`p-2 rounded-full ${
-                            payment.status === 'paid' ? 'bg-success/10' :
-                            dueDateInfo?.type === 'overdue' ? 'bg-danger/10' :
+                            effectiveStatus === 'paid' ? 'bg-success/10' :
+                            effectiveStatus === 'overdue' ? 'bg-danger/10' :
                             'bg-warning/10'
                           }`}>
-                            {payment.status === 'paid' ? (
+                            {effectiveStatus === 'paid' ? (
                               <CheckCircle2 className="w-4 h-4 text-success" />
-                            ) : dueDateInfo?.type === 'overdue' ? (
+                            ) : effectiveStatus === 'overdue' ? (
                               <AlertCircle className="w-4 h-4 text-danger" />
                             ) : (
                               <Clock className="w-4 h-4 text-warning" />
@@ -373,22 +372,14 @@ export default function Dashboard() {
                         <div className="text-right flex flex-col items-end gap-1">
                           <p className="font-semibold">{formatCurrency(payment.totalAmount)}</p>
                           <div className="flex items-center gap-2">
-                            {dueDateInfo && (
-                              <span className={`text-xs flex items-center gap-1 ${
-                                dueDateInfo.type === 'overdue' ? 'text-danger' :
-                                dueDateInfo.type === 'today' ? 'text-warning' :
-                                dueDateInfo.days <= 3 ? 'text-warning' : 'text-muted-foreground'
-                              }`}>
+                            {carryInfo?.type === 'overdue' && (
+                              <span className="text-xs text-danger flex items-center gap-1">
                                 <CalendarClock className="w-3 h-3" />
-                                {dueDateInfo.type === 'overdue' 
-                                  ? `${dueDateInfo.days}d overdue`
-                                  : dueDateInfo.type === 'today'
-                                  ? 'Due today'
-                                  : `${dueDateInfo.days}d left`}
+                                {carryInfo.months === 1 ? '1 month overdue' : `${carryInfo.months} months overdue`}
                               </span>
                             )}
-                            <Badge variant={dueDateInfo?.type === 'overdue' ? 'destructive' : payment.status as any}>
-                              {dueDateInfo?.type === 'overdue' ? 'overdue' : payment.status}
+                            <Badge variant={effectiveStatus === 'overdue' ? 'destructive' : effectiveStatus as any}>
+                              {effectiveStatus}
                             </Badge>
                           </div>
                         </div>
