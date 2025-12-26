@@ -24,14 +24,19 @@ function FirebaseInitializer({ children }: { children: React.ReactNode }) {
   const { user, isApproved } = useAuth();
   const initializeData = useStore((state) => state.initializeData);
   const resetStore = useStore((state) => state.resetStore);
+  const currentUserId = useStore((state) => state.currentUserId);
+  const initialized = useStore((state) => state.initialized);
   
   useEffect(() => {
     if (user && isApproved) {
-      initializeData(user.uid);
-    } else {
+      // Force re-initialization if not initialized or switching users
+      if (!initialized || currentUserId !== user.uid) {
+        initializeData(user.uid);
+      }
+    } else if (!user) {
       resetStore();
     }
-  }, [user?.uid, isApproved, initializeData, resetStore]);
+  }, [user?.uid, isApproved, initializeData, resetStore, currentUserId, initialized]);
   
   return <>{children}</>;
 }
