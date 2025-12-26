@@ -118,11 +118,23 @@ export const useStore = create<AppState>()((set, get) => ({
     // If already initialized for this user, skip
     if (state.initialized && state.currentUserId === userId) return;
     
-    // If switching users, clean up old listeners
-    if (state.currentUserId && state.currentUserId !== userId) {
+    // Clean up any existing listeners before setting up new ones
+    if (unsubscribeFunctions.length > 0) {
       unsubscribeFunctions.forEach(unsub => unsub());
       unsubscribeFunctions = [];
     }
+    
+    // Reset state before initializing
+    set({
+      properties: [],
+      units: [],
+      tenants: [],
+      payments: [],
+      expenses: [],
+      monthlyStatuses: [],
+      loading: true,
+      initialized: false,
+    });
     
     // User-specific paths
     const basePath = `users/${userId}`;
