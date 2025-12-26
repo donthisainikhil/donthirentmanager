@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,17 +33,33 @@ export function ExpenseFormDialog({ open, onOpenChange, expense }: ExpenseFormDi
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
-    month: expense?.month || selectedMonth,
-    propertyId: expense?.propertyId || '',
-    personName: expense?.personName || '',
-    amount: expense?.amount?.toString() || '',
-    purpose: expense?.purpose || '',
-    comments: expense?.comments || '',
+    month: selectedMonth,
+    propertyId: '',
+    personName: '',
+    amount: '',
+    purpose: '',
+    comments: '',
   });
-  const [receiptFile, setReceiptFile] = useState<string | undefined>(expense?.receiptDocument);
-  const [receiptFileName, setReceiptFileName] = useState<string | undefined>(expense?.receiptFileName);
+  const [receiptFile, setReceiptFile] = useState<string | undefined>();
+  const [receiptFileName, setReceiptFileName] = useState<string | undefined>();
 
   const monthOptions = generateMonthOptions();
+
+  // Sync form data when dialog opens or expense changes
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        month: expense?.month || selectedMonth,
+        propertyId: expense?.propertyId || '',
+        personName: expense?.personName || '',
+        amount: expense?.amount?.toString() || '',
+        purpose: expense?.purpose || '',
+        comments: expense?.comments || '',
+      });
+      setReceiptFile(expense?.receiptDocument);
+      setReceiptFileName(expense?.receiptFileName);
+    }
+  }, [open, expense, selectedMonth]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
