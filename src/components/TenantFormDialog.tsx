@@ -9,30 +9,20 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useStore } from '@/store/useStore';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { CalendarIcon, Upload, Camera } from 'lucide-react';
+import { CalendarIcon, Upload, Camera, User, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tenant } from '@/types';
 
 interface TenantFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  tenant?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-    phone2?: string;
-    advancePaid: number;
-    leaseStartDate: string;
-    monthlyWaterBill: number;
-    unitId: string;
-    propertyId: string;
-  };
+  tenant?: Tenant | null;
 }
 
 export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialogProps) {
   const { properties, units, addTenant, updateTenant } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -44,10 +34,13 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
     monthlyWaterBill: '',
     propertyId: '',
     unitId: '',
+    aadharNumber: '',
   });
   const [leaseDate, setLeaseDate] = useState<Date | undefined>(undefined);
   const [aadharFile, setAadharFile] = useState<string | undefined>();
   const [aadharFileName, setAadharFileName] = useState<string | undefined>();
+  const [profilePhoto, setProfilePhoto] = useState<string | undefined>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sync form data when dialog opens or tenant changes
   useEffect(() => {
@@ -62,10 +55,12 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
         monthlyWaterBill: tenant?.monthlyWaterBill?.toString() || '',
         propertyId: tenant?.propertyId || '',
         unitId: tenant?.unitId || '',
+        aadharNumber: tenant?.aadharNumber || '',
       });
       setLeaseDate(tenant?.leaseStartDate ? new Date(tenant.leaseStartDate) : undefined);
-      setAadharFile(undefined);
-      setAadharFileName(undefined);
+      setAadharFile(tenant?.aadharDocument);
+      setAadharFileName(tenant?.aadharFileName);
+      setProfilePhoto(tenant?.profilePhoto);
     }
   }, [open, tenant]);
 
@@ -76,6 +71,10 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size must be less than 5MB');
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setAadharFile(reader.result as string);
@@ -85,7 +84,22 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('Photo size must be less than 2MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePhoto(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.firstName || !formData.lastName || !formData.phone || !formData.unitId || !leaseDate) {
@@ -98,29 +112,40 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
       return;
     }
 
-    const tenantData = {
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      email: formData.email,
-      phone: formData.phone,
-      phone2: formData.phone2 || undefined,
-      advancePaid: parseFloat(formData.advancePaid) || 0,
-      leaseStartDate: leaseDate.toISOString(),
-      monthlyWaterBill: parseFloat(formData.monthlyWaterBill) || 0,
-      unitId: formData.unitId,
-      propertyId: formData.propertyId,
-      ...(aadharFile && { aadharDocument: aadharFile, aadharFileName }),
-    };
+    setIsSubmitting(true);
 
-    if (tenant) {
-      updateTenant(tenant.id, tenantData);
-      toast.success('Tenant updated successfully');
-    } else {
-      addTenant(tenantData);
-      toast.success('Tenant added successfully');
+    try {
+      const tenantData = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        phone2: formData.phone2?.trim() || undefined,
+        advancePaid: parseFloat(formData.advancePaid) || 0,
+        leaseStartDate: leaseDate.toISOString(),
+        monthlyWaterBill: parseFloat(formData.monthlyWaterBill) || 0,
+        unitId: formData.unitId,
+        propertyId: formData.propertyId,
+        aadharNumber: formData.aadharNumber?.trim() || undefined,
+        ...(aadharFile && { aadharDocument: aadharFile, aadharFileName }),
+        ...(profilePhoto && { profilePhoto }),
+      };
+
+      if (tenant) {
+        await updateTenant(tenant.id, tenantData);
+        toast.success('Tenant updated successfully');
+      } else {
+        await addTenant(tenantData);
+        toast.success('Tenant added successfully');
+      }
+
+      onOpenChange(false);
+    } catch (error) {
+      toast.error('Failed to save tenant');
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    onOpenChange(false);
   };
 
   return (
@@ -130,6 +155,48 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
           <DialogTitle>{tenant ? 'Edit Tenant' : 'Add New Tenant'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Profile Photo */}
+          <div className="flex justify-center">
+            <div className="relative">
+              {profilePhoto ? (
+                <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary/20">
+                  <img src={profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center">
+                  <User className="w-10 h-10 text-muted-foreground" />
+                </div>
+              )}
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="absolute bottom-0 right-0 rounded-full w-8 h-8"
+                onClick={() => photoInputRef.current?.click()}
+              >
+                <Camera className="w-4 h-4" />
+              </Button>
+              {profilePhoto && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-0 right-0 rounded-full w-6 h-6"
+                  onClick={() => setProfilePhoto(undefined)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="firstName">First Name *</Label>
@@ -268,6 +335,17 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="aadharNumber">Aadhar Number</Label>
+            <Input
+              id="aadharNumber"
+              value={formData.aadharNumber}
+              onChange={(e) => setFormData({ ...formData, aadharNumber: e.target.value })}
+              placeholder="XXXX XXXX XXXX"
+              maxLength={14}
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label>Aadhar Document {!tenant && '*'}</Label>
             <input
               ref={fileInputRef}
@@ -277,6 +355,24 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
               className="hidden"
               onChange={handleFileChange}
             />
+            {aadharFile && (
+              <div className="mb-2 p-2 border rounded-lg bg-muted">
+                {aadharFile.startsWith('data:image') ? (
+                  <img src={aadharFile} alt="Aadhar preview" className="max-h-32 mx-auto rounded" />
+                ) : (
+                  <p className="text-sm text-center text-muted-foreground">{aadharFileName || 'Document uploaded'}</p>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full mt-2 text-destructive"
+                  onClick={() => { setAadharFile(undefined); setAadharFileName(undefined); }}
+                >
+                  <X className="w-4 h-4 mr-1" /> Remove
+                </Button>
+              </div>
+            )}
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -302,16 +398,15 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                 Camera
               </Button>
             </div>
-            {aadharFileName && (
-              <p className="text-sm text-muted-foreground">Selected: {aadharFileName}</p>
-            )}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit">{tenant ? 'Update' : 'Add Tenant'}</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : (tenant ? 'Update' : 'Add Tenant')}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
