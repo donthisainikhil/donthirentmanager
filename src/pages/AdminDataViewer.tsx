@@ -147,6 +147,15 @@ export default function AdminDataViewer() {
     return profile?.full_name || profile?.email || userId;
   };
 
+  const getUnitInfo = (unitId: string, userId: string) => {
+    const userData = usersData[userId];
+    if (!userData) return '-';
+    const unit = userData.units.find(u => u.id === unitId);
+    if (!unit) return '-';
+    const property = userData.properties.find(p => p.id === unit.propertyId);
+    return `${property?.name || 'Unknown'} - ${unit.unitNumber}`;
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -430,6 +439,7 @@ export default function AdminDataViewer() {
                         <TableHeader>
                           <TableRow>
                             {selectedUserId === 'all' && <TableHead>Owner</TableHead>}
+                            <TableHead>Unit</TableHead>
                             <TableHead>Month</TableHead>
                             <TableHead>Total Amount</TableHead>
                             <TableHead>Paid Amount</TableHead>
@@ -444,7 +454,8 @@ export default function AdminDataViewer() {
                                   <Badge variant="outline">{getUserName(payment._userId)}</Badge>
                                 </TableCell>
                               )}
-                              <TableCell className="font-medium">{formatMonth(payment.month)}</TableCell>
+                              <TableCell className="font-medium">{getUnitInfo(payment.unitId, payment._userId)}</TableCell>
+                              <TableCell>{formatMonth(payment.month)}</TableCell>
                               <TableCell>{formatCurrency(payment.totalAmount)}</TableCell>
                               <TableCell>{formatCurrency(payment.paidAmount)}</TableCell>
                               <TableCell>
