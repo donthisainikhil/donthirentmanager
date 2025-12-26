@@ -296,17 +296,20 @@ export default function Payments() {
                           </div>
                           {item.isPaid ? (
                             <Badge variant="default" className="bg-success">Paid</Badge>
-                          ) : item.isOverdue ? (
-                            <Badge variant="destructive">Overdue</Badge>
                           ) : item.hasPayment ? (
-                            <Button 
-                              size="sm" 
-                              variant="success"
-                              onClick={() => setSelectedPayment(item.payment!)}
-                            >
-                              <IndianRupee className="w-3 h-3 mr-1" />
-                              Record
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              {item.isOverdue && (
+                                <Badge variant="destructive">Overdue</Badge>
+                              )}
+                              <Button 
+                                size="sm" 
+                                variant="success"
+                                onClick={() => setSelectedPayment(item.payment!)}
+                              >
+                                <IndianRupee className="w-3 h-3 mr-1" />
+                                Record
+                              </Button>
+                            </div>
                           ) : (
                             <Button 
                               size="sm" 
