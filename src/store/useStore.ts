@@ -93,6 +93,7 @@ export const useStore = create<AppState>()((set, get) => ({
   
   // Reset store when user logs out
   resetStore: () => {
+    console.log('[Store] resetStore called');
     // Unsubscribe from all Firebase listeners
     unsubscribeFunctions.forEach(unsub => unsub());
     unsubscribeFunctions = [];
@@ -105,7 +106,7 @@ export const useStore = create<AppState>()((set, get) => ({
       expenses: [],
       monthlyStatuses: [],
       selectedMonth: getCurrentMonth(),
-      loading: true,
+      loading: false,
       initialized: false,
       currentUserId: null,
     });
@@ -115,18 +116,24 @@ export const useStore = create<AppState>()((set, get) => ({
   initializeData: (userId: string) => {
     const state = get();
     
-    // If already initialized for this user, skip
-    if (state.initialized && state.currentUserId === userId) return;
+    console.log('[Store] initializeData called for:', userId, 'current:', state.currentUserId, 'initialized:', state.initialized);
     
-    console.log('[Store] Initializing data for user:', userId);
+    // If already initialized for this user, skip
+    if (state.initialized && state.currentUserId === userId) {
+      console.log('[Store] Already initialized for this user, skipping');
+      return;
+    }
+    
+    console.log('[Store] Proceeding with initialization for user:', userId);
     
     // Clean up any existing listeners before setting up new ones
     if (unsubscribeFunctions.length > 0) {
+      console.log('[Store] Cleaning up existing listeners');
       unsubscribeFunctions.forEach(unsub => unsub());
       unsubscribeFunctions = [];
     }
     
-    // Reset state before initializing
+    // Set currentUserId immediately so actions can work
     set({
       properties: [],
       units: [],
@@ -138,6 +145,8 @@ export const useStore = create<AppState>()((set, get) => ({
       initialized: false,
       currentUserId: userId,
     });
+    
+    console.log('[Store] State reset, currentUserId set to:', userId);
     
     // User-specific paths
     const basePath = `users/${userId}`;
@@ -217,7 +226,11 @@ export const useStore = create<AppState>()((set, get) => ({
   // Property actions
   addProperty: async (property) => {
     const userId = get().currentUserId;
-    if (!userId) throw new Error('User not authenticated');
+    console.log('[Store] addProperty called, currentUserId:', userId);
+    if (!userId) {
+      console.error('[Store] addProperty failed - User not authenticated');
+      throw new Error('User not authenticated');
+    }
     
     const id = uuidv4();
     const newProperty: Property = { 
@@ -225,7 +238,9 @@ export const useStore = create<AppState>()((set, get) => ({
       id, 
       createdAt: new Date().toISOString() 
     };
+    console.log('[Store] Writing property to Firebase:', `users/${userId}/properties/${id}`);
     await firebaseSet(ref(database, `users/${userId}/properties/${id}`), newProperty);
+    console.log('[Store] Property added successfully');
   },
   
   updateProperty: async (id, property) => {
