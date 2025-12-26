@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,9 +16,18 @@ interface UnitFormDialogProps {
 
 export function UnitFormDialog({ open, onOpenChange, propertyId, unit }: UnitFormDialogProps) {
   const { properties, addUnit, updateUnit } = useStore();
-  const [selectedPropertyId, setSelectedPropertyId] = useState(unit?.propertyId || propertyId || '');
-  const [unitNumber, setUnitNumber] = useState(unit?.unitNumber || '');
-  const [monthlyRent, setMonthlyRent] = useState(unit?.monthlyRent?.toString() || '');
+  const [selectedPropertyId, setSelectedPropertyId] = useState('');
+  const [unitNumber, setUnitNumber] = useState('');
+  const [monthlyRent, setMonthlyRent] = useState('');
+
+  // Reset form when dialog opens or propertyId/unit changes
+  useEffect(() => {
+    if (open) {
+      setSelectedPropertyId(unit?.propertyId || propertyId || '');
+      setUnitNumber(unit?.unitNumber || '');
+      setMonthlyRent(unit?.monthlyRent?.toString() || '');
+    }
+  }, [open, propertyId, unit]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
