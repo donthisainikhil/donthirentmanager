@@ -118,6 +118,8 @@ export const useStore = create<AppState>()((set, get) => ({
     // If already initialized for this user, skip
     if (state.initialized && state.currentUserId === userId) return;
     
+    console.log('[Store] Initializing data for user:', userId);
+    
     // Clean up any existing listeners before setting up new ones
     if (unsubscribeFunctions.length > 0) {
       unsubscribeFunctions.forEach(unsub => unsub());
@@ -134,10 +136,12 @@ export const useStore = create<AppState>()((set, get) => ({
       monthlyStatuses: [],
       loading: true,
       initialized: false,
+      currentUserId: userId,
     });
     
     // User-specific paths
     const basePath = `users/${userId}`;
+    console.log('[Store] Firebase base path:', basePath);
     
     const propertiesRef = ref(database, `${basePath}/properties`);
     const unitsRef = ref(database, `${basePath}/units`);
@@ -147,40 +151,56 @@ export const useStore = create<AppState>()((set, get) => ({
     const monthlyStatusesRef = ref(database, `${basePath}/monthlyStatuses`);
     
     // Listen for properties changes
-    const propertiesUnsub = onValue(propertiesRef, (snapshot) => {
+    onValue(propertiesRef, (snapshot) => {
       const data = snapshot.val();
-      set({ properties: objectToArray(data), loading: false });
+      console.log('[Store] Properties data received:', data);
+      set({ properties: objectToArray(data), loading: false, initialized: true });
+    }, (error) => {
+      console.error('[Store] Properties listener error:', error);
+      set({ loading: false, initialized: true });
     });
     
     // Listen for units changes
-    const unitsUnsub = onValue(unitsRef, (snapshot) => {
+    onValue(unitsRef, (snapshot) => {
       const data = snapshot.val();
+      console.log('[Store] Units data received:', data);
       set({ units: objectToArray(data) });
+    }, (error) => {
+      console.error('[Store] Units listener error:', error);
     });
     
     // Listen for tenants changes
-    const tenantsUnsub = onValue(tenantsRef, (snapshot) => {
+    onValue(tenantsRef, (snapshot) => {
       const data = snapshot.val();
+      console.log('[Store] Tenants data received:', data);
       set({ tenants: objectToArray(data) });
+    }, (error) => {
+      console.error('[Store] Tenants listener error:', error);
     });
     
     // Listen for payments changes
-    const paymentsUnsub = onValue(paymentsRef, (snapshot) => {
+    onValue(paymentsRef, (snapshot) => {
       const data = snapshot.val();
       const payments = objectToArray<RentPayment>(data);
       set({ payments });
+    }, (error) => {
+      console.error('[Store] Payments listener error:', error);
     });
     
     // Listen for expenses changes
-    const expensesUnsub = onValue(expensesRef, (snapshot) => {
+    onValue(expensesRef, (snapshot) => {
       const data = snapshot.val();
       set({ expenses: objectToArray(data) });
+    }, (error) => {
+      console.error('[Store] Expenses listener error:', error);
     });
     
     // Listen for monthly statuses changes
-    const monthlyStatusesUnsub = onValue(monthlyStatusesRef, (snapshot) => {
+    onValue(monthlyStatusesRef, (snapshot) => {
       const data = snapshot.val();
       set({ monthlyStatuses: objectToArray(data) });
+    }, (error) => {
+      console.error('[Store] Monthly statuses listener error:', error);
     });
     
     // Store unsubscribe functions
@@ -192,8 +212,6 @@ export const useStore = create<AppState>()((set, get) => ({
       () => off(expensesRef),
       () => off(monthlyStatusesRef),
     ];
-    
-    set({ initialized: true, currentUserId: userId });
   },
   
   // Property actions
