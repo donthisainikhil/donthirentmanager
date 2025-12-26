@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Receipt, Pencil, Trash2, FileText, IndianRupee, TrendingDown, Wallet, X } from 'lucide-react';
+import { Plus, Receipt, Pencil, Trash2, FileText, IndianRupee, TrendingDown, Wallet, ZoomIn, ZoomOut, Download, RotateCcw } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useExpenseStats } from '@/hooks/useDashboardStats';
 import { Layout } from '@/components/Layout';
@@ -37,6 +37,27 @@ export default function Expenses() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [viewReceipt, setViewReceipt] = useState<{ url: string; name: string } | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.25, 3));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.25, 0.5));
+  const handleZoomReset = () => setZoomLevel(1);
+
+  const handleDownload = () => {
+    if (!viewReceipt) return;
+    const link = document.createElement('a');
+    link.href = viewReceipt.url;
+    link.download = viewReceipt.name || 'receipt';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Receipt downloaded');
+  };
+
+  const handleCloseReceipt = () => {
+    setViewReceipt(null);
+    setZoomLevel(1);
+  };
 
   const monthExpenses = expenses.filter(e => e.month === selectedMonth);
 
@@ -218,25 +239,47 @@ export default function Expenses() {
       </AlertDialog>
 
       {/* Receipt Viewer Dialog */}
-      <Dialog open={!!viewReceipt} onOpenChange={() => setViewReceipt(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh]">
+      <Dialog open={!!viewReceipt} onOpenChange={handleCloseReceipt}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>{viewReceipt?.name}</span>
             </DialogTitle>
           </DialogHeader>
-          <div className="flex items-center justify-center overflow-auto max-h-[70vh]">
+          
+          {/* Toolbar */}
+          <div className="flex items-center justify-center gap-2 py-2 border-b">
+            <Button variant="outline" size="icon" onClick={handleZoomOut} disabled={zoomLevel <= 0.5}>
+              <ZoomOut className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-medium min-w-[60px] text-center">{Math.round(zoomLevel * 100)}%</span>
+            <Button variant="outline" size="icon" onClick={handleZoomIn} disabled={zoomLevel >= 3}>
+              <ZoomIn className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={handleZoomReset}>
+              <RotateCcw className="w-4 h-4" />
+            </Button>
+            <div className="w-px h-6 bg-border mx-2" />
+            <Button variant="outline" size="sm" onClick={handleDownload}>
+              <Download className="w-4 h-4 mr-2" />
+              Download
+            </Button>
+          </div>
+
+          {/* Image/PDF Viewer */}
+          <div className="flex items-center justify-center overflow-auto max-h-[60vh] bg-muted/30 rounded-lg p-4">
             {viewReceipt?.url.startsWith('data:application/pdf') ? (
               <iframe 
                 src={viewReceipt.url} 
-                className="w-full h-[60vh] border rounded-lg"
+                className="w-full h-[55vh] border rounded-lg"
                 title="Receipt PDF"
               />
             ) : (
               <img 
                 src={viewReceipt?.url} 
                 alt="Receipt" 
-                className="max-w-full max-h-[60vh] object-contain rounded-lg"
+                className="max-w-full max-h-[55vh] object-contain rounded-lg transition-transform duration-200"
+                style={{ transform: `scale(${zoomLevel})` }}
               />
             )}
           </div>
