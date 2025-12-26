@@ -59,10 +59,70 @@ const getCurrentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
+// Initial properties data from Google Sheet
+const initialProperties: Property[] = [
+  {
+    id: 'prop-1',
+    name: 'H.NO:1-10',
+    address: 'H.NO: 1-10, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'prop-2',
+    name: 'H.NO: 1-5/5',
+    address: 'H.NO: 1-5/5, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'prop-3',
+    name: 'H.No: 1-8',
+    address: 'H.NO: 1-8, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'prop-4',
+    name: 'Survey No: 119 Rooms',
+    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'prop-5',
+    name: 'Godown',
+    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'prop-6',
+    name: 'Janapriya Sheds',
+    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'prop-7',
+    name: 'MainRoad Commercial Shops-Plot No:11/D',
+    address: 'Plot NO: 11/D, Survey No: 45-51, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 'prop-8',
+    name: 'Amrutha Rao Sheds',
+    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
+    totalUnits: 0,
+    createdAt: new Date().toISOString()
+  }
+];
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
-      properties: [],
+      properties: initialProperties,
       units: [],
       tenants: [],
       payments: [],
