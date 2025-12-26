@@ -115,27 +115,41 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
     setIsSubmitting(true);
 
     try {
-      const tenantData = {
+      // Build tenant data object, excluding undefined values (Firebase doesn't allow undefined)
+      const tenantData: Record<string, any> = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
-        email: formData.email.trim(),
+        email: formData.email.trim() || '',
         phone: formData.phone.trim(),
-        phone2: formData.phone2?.trim() || undefined,
         advancePaid: parseFloat(formData.advancePaid) || 0,
         leaseStartDate: leaseDate.toISOString(),
         monthlyWaterBill: parseFloat(formData.monthlyWaterBill) || 0,
         unitId: formData.unitId,
         propertyId: formData.propertyId,
-        aadharNumber: formData.aadharNumber?.trim() || undefined,
-        ...(aadharFile && { aadharDocument: aadharFile, aadharFileName }),
-        ...(profilePhoto && { profilePhoto }),
       };
+
+      // Only add optional fields if they have values
+      if (formData.phone2?.trim()) {
+        tenantData.phone2 = formData.phone2.trim();
+      }
+      if (formData.aadharNumber?.trim()) {
+        tenantData.aadharNumber = formData.aadharNumber.trim();
+      }
+      if (aadharFile) {
+        tenantData.aadharDocument = aadharFile;
+        if (aadharFileName) {
+          tenantData.aadharFileName = aadharFileName;
+        }
+      }
+      if (profilePhoto) {
+        tenantData.profilePhoto = profilePhoto;
+      }
 
       if (tenant) {
         await updateTenant(tenant.id, tenantData);
         toast.success('Tenant updated successfully');
       } else {
-        await addTenant(tenantData);
+        await addTenant(tenantData as any);
         toast.success('Tenant added successfully');
       }
 
