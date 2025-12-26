@@ -112,14 +112,14 @@ export function ExpenseFormDialog({ open, onOpenChange, expense }: ExpenseFormDi
           <div className="space-y-2">
             <Label>Property (Optional)</Label>
             <Select
-              value={formData.propertyId}
-              onValueChange={(value) => setFormData({ ...formData, propertyId: value })}
+              value={formData.propertyId || 'none'}
+              onValueChange={(value) => setFormData({ ...formData, propertyId: value === 'none' ? '' : value })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select property (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">General Expense</SelectItem>
+                <SelectItem value="none">General Expense</SelectItem>
                 {properties.map((property) => (
                   <SelectItem key={property.id} value={property.id}>
                     {property.name}
