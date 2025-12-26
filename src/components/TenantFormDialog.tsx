@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,21 +35,39 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
-    firstName: tenant?.firstName || '',
-    lastName: tenant?.lastName || '',
-    email: tenant?.email || '',
-    phone: tenant?.phone || '',
-    phone2: tenant?.phone2 || '',
-    advancePaid: tenant?.advancePaid?.toString() || '',
-    monthlyWaterBill: tenant?.monthlyWaterBill?.toString() || '',
-    propertyId: tenant?.propertyId || '',
-    unitId: tenant?.unitId || '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    phone2: '',
+    advancePaid: '',
+    monthlyWaterBill: '',
+    propertyId: '',
+    unitId: '',
   });
-  const [leaseDate, setLeaseDate] = useState<Date | undefined>(
-    tenant?.leaseStartDate ? new Date(tenant.leaseStartDate) : undefined
-  );
+  const [leaseDate, setLeaseDate] = useState<Date | undefined>(undefined);
   const [aadharFile, setAadharFile] = useState<string | undefined>();
   const [aadharFileName, setAadharFileName] = useState<string | undefined>();
+
+  // Sync form data when dialog opens or tenant changes
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        firstName: tenant?.firstName || '',
+        lastName: tenant?.lastName || '',
+        email: tenant?.email || '',
+        phone: tenant?.phone || '',
+        phone2: tenant?.phone2 || '',
+        advancePaid: tenant?.advancePaid?.toString() || '',
+        monthlyWaterBill: tenant?.monthlyWaterBill?.toString() || '',
+        propertyId: tenant?.propertyId || '',
+        unitId: tenant?.unitId || '',
+      });
+      setLeaseDate(tenant?.leaseStartDate ? new Date(tenant.leaseStartDate) : undefined);
+      setAadharFile(undefined);
+      setAadharFileName(undefined);
+    }
+  }, [open, tenant]);
 
   const availableUnits = units.filter(
     u => u.propertyId === formData.propertyId && (!u.isOccupied || u.id === tenant?.unitId)
