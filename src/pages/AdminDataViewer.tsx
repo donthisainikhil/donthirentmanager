@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { onValue, ref } from 'firebase/database';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 import { 
   Building2, 
   Users, 
@@ -51,50 +52,123 @@ export default function AdminDataViewer() {
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
   const [profilesLoading, setProfilesLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(true);
+  const permissionToastShownRef = useRef(false);
 
   useEffect(() => {
     if (!isAdmin) return;
 
-    const profilesRef = ref(database, 'profiles');
-    const usersRef = ref(database, 'users');
+    // Reset loading flags every time we (re)enter as admin
+    setProfilesLoading(true);
+    setDataLoading(true);
 
-    const unsubProfiles = onValue(profilesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const profilesData = snapshot.val();
-        const list = Object.values(profilesData) as ProfileRecord[];
-        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setProfiles(list);
-      } else {
-        setProfiles([]);
-      }
-      setProfilesLoading(false);
+    // Keep these in a closure so we can clean them up when profiles change
+    let userUnsubs: Array<() => void> = [];
+    let remainingInitialLoads = 0;
+    const seenFirstSnapshot = new Set<string>();
+
+    const clearUserListeners = () => {
+      userUnsubs.forEach((u) => u());
+      userUnsubs = [];
+      seenFirstSnapshot.clear();
+      remainingInitialLoads = 0;
+    };
+
+    const normalizeUserData = (raw: any): UserData => ({
+      properties: raw?.properties ? Object.values(raw.properties) : [],
+      units: raw?.units ? Object.values(raw.units) : [],
+      tenants: raw?.tenants ? Object.values(raw.tenants) : [],
+      payments: raw?.payments ? Object.values(raw.payments) : [],
+      expenses: raw?.expenses ? Object.values(raw.expenses) : [],
     });
 
-    const unsubUsers = onValue(usersRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const allUsersData = snapshot.val() as Record<string, any>;
-        const processedData: Record<string, UserData> = {};
+    const subscribeUsersForProfiles = (profileList: ProfileRecord[]) => {
+      clearUserListeners();
 
-        Object.entries(allUsersData).forEach(([userId, userData]) => {
-          processedData[userId] = {
-            properties: userData?.properties ? Object.values(userData.properties) : [],
-            units: userData?.units ? Object.values(userData.units) : [],
-            tenants: userData?.tenants ? Object.values(userData.tenants) : [],
-            payments: userData?.payments ? Object.values(userData.payments) : [],
-            expenses: userData?.expenses ? Object.values(userData.expenses) : [],
-          };
-        });
-
-        setUsersData(processedData);
-      } else {
+      if (profileList.length === 0) {
         setUsersData({});
+        setDataLoading(false);
+        return;
       }
-      setDataLoading(false);
-    });
+
+      // We do NOT listen to the /users root because many Firebase rules deny that.
+      // Instead, we subscribe to each /users/{uid} branch.
+      remainingInitialLoads = profileList.length;
+
+      // Reset data map each time we refresh profiles
+      setUsersData({});
+
+      profileList.forEach((p) => {
+        const userRef = ref(database, `users/${p.id}`);
+
+        const unsub = onValue(
+          userRef,
+          (snap) => {
+            const raw = snap.exists() ? snap.val() : null;
+
+            setUsersData((prev) => ({
+              ...prev,
+              [p.id]: normalizeUserData(raw),
+            }));
+
+            if (!seenFirstSnapshot.has(p.id)) {
+              seenFirstSnapshot.add(p.id);
+              remainingInitialLoads -= 1;
+              if (remainingInitialLoads <= 0) setDataLoading(false);
+            }
+          },
+          () => {
+            // Permission denied or other read failure for this user's branch
+            setUsersData((prev) => ({
+              ...prev,
+              [p.id]: normalizeUserData(null),
+            }));
+
+            if (!seenFirstSnapshot.has(p.id)) {
+              seenFirstSnapshot.add(p.id);
+              remainingInitialLoads -= 1;
+              if (remainingInitialLoads <= 0) setDataLoading(false);
+            }
+
+            if (!permissionToastShownRef.current) {
+              permissionToastShownRef.current = true;
+              toast.error('Admin access denied to user data. Update Firebase rules to allow admins to read /users/{uid}.');
+            }
+          },
+        );
+
+        userUnsubs.push(unsub);
+      });
+    };
+
+    const profilesRef = ref(database, 'profiles');
+
+    const unsubProfiles = onValue(
+      profilesRef,
+      (snapshot) => {
+        let list: ProfileRecord[] = [];
+
+        if (snapshot.exists()) {
+          const profilesData = snapshot.val();
+          list = Object.values(profilesData) as ProfileRecord[];
+          list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        }
+
+        setProfiles(list);
+        setProfilesLoading(false);
+        subscribeUsersForProfiles(list);
+      },
+      () => {
+        setProfiles([]);
+        setUsersData({});
+        setProfilesLoading(false);
+        setDataLoading(false);
+        toast.error('Unable to load users list');
+      },
+    );
 
     return () => {
       unsubProfiles();
-      unsubUsers();
+      clearUserListeners();
     };
   }, [isAdmin]);
 
