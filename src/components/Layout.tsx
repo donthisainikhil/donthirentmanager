@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   Shield,
-  LogOut
+  LogOut,
+  Database
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -29,13 +30,18 @@ const navItems = [
   { path: '/expenses', icon: Receipt, label: 'Expenses' },
 ];
 
+const adminItems = [
+  { path: '/access', icon: Shield, label: 'Access' },
+  { path: '/admin-data', icon: Database, label: 'All Data' },
+];
+
 export function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isAdmin, signOut, profile } = useAuth();
 
   const allNavItems = isAdmin 
-    ? [...navItems, { path: '/access', icon: Shield, label: 'Access' }]
+    ? [...navItems, ...adminItems]
     : navItems;
 
   return (
