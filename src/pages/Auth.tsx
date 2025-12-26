@@ -16,7 +16,7 @@ const emailSchema = z.string().email('Please enter a valid email');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 
 export default function Auth() {
-  const { user, loading, signIn, signUp } = useAuth();
+  const { user, loading, signIn, signUp, isApproved } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
@@ -40,8 +40,14 @@ export default function Auth() {
     );
   }
 
-  if (user) {
+  // Only redirect to dashboard if user is approved
+  if (user && isApproved) {
     return <Navigate to="/" replace />;
+  }
+  
+  // Redirect pending users to pending page
+  if (user && !isApproved) {
+    return <Navigate to="/pending" replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
