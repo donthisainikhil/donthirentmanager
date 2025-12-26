@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
+import { ref, get, update, onValue } from 'firebase/database';
+import { database } from '@/lib/firebase';
 import { Layout } from '@/components/Layout';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth, Profile } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,83 +14,47 @@ import { format } from 'date-fns';
 
 type UserStatus = 'pending' | 'approved' | 'rejected';
 
-interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string | null;
-  status: UserStatus;
-  created_at: string;
-  role: string;
-}
-
 export default function AccessManagement() {
   const { isAdmin, loading: authLoading, isApproved } = useAuth();
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingUser, setUpdatingUser] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAdmin) {
-      fetchUsers();
+      // Listen for realtime updates to profiles
+      const profilesRef = ref(database, 'profiles');
+      const unsubscribe = onValue(profilesRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const profilesData = snapshot.val();
+          const profilesList = Object.values(profilesData) as Profile[];
+          // Sort by created_at descending
+          profilesList.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          setUsers(profilesList);
+        } else {
+          setUsers([]);
+        }
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
     }
   }, [isAdmin]);
-
-  const fetchUsers = async () => {
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (profilesError) {
-      toast.error('Failed to load users');
-      setLoading(false);
-      return;
-    }
-
-    const { data: roles, error: rolesError } = await supabase
-      .from('user_roles')
-      .select('user_id, role');
-
-    if (rolesError) {
-      toast.error('Failed to load user roles');
-      setLoading(false);
-      return;
-    }
-
-    const usersWithRoles = profiles.map((profile) => {
-      const userRole = roles?.find((r) => r.user_id === profile.id);
-      return {
-        ...profile,
-        role: userRole?.role || 'user',
-      };
-    });
-
-    setUsers(usersWithRoles as UserProfile[]);
-    setLoading(false);
-  };
 
   const updateUserStatus = async (userId: string, status: UserStatus) => {
     setUpdatingUser(userId);
     
-    const { error } = await supabase
-      .from('profiles')
-      .update({ status })
-      .eq('id', userId);
-
-    setUpdatingUser(null);
-
-    if (error) {
+    try {
+      const profileRef = ref(database, `profiles/${userId}`);
+      await update(profileRef, { status });
+      toast.success(`User ${status === 'approved' ? 'approved' : 'rejected'} successfully`);
+    } catch (error) {
       toast.error('Failed to update user status');
-      return;
     }
-
-    setUsers((prev) =>
-      prev.map((user) =>
-        user.id === userId ? { ...user, status } : user
-      )
-    );
-
-    toast.success(`User ${status === 'approved' ? 'approved' : 'rejected'} successfully`);
+    
+    setUpdatingUser(null);
   };
 
   if (authLoading) {
