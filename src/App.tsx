@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useStore } from "@/store/useStore";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import Dashboard from "./pages/Dashboard";
 import Properties from "./pages/Properties";
 import Tenants from "./pages/Tenants";
@@ -24,6 +25,9 @@ function FirebaseInitializer({ children }: { children: React.ReactNode }) {
   const { user, isApproved } = useAuth();
   const initializeData = useStore((state) => state.initializeData);
   const resetStore = useStore((state) => state.resetStore);
+  
+  // Initialize push notifications for native platforms
+  usePushNotifications();
   
   useEffect(() => {
     if (user && isApproved) {
