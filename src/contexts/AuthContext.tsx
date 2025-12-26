@@ -1,20 +1,28 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { 
+  User, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut as firebaseSignOut,
+  onAuthStateChanged
+} from 'firebase/auth';
+import { ref, set, get, onValue } from 'firebase/database';
+import { auth, database } from '@/lib/firebase';
 
 type UserStatus = 'pending' | 'approved' | 'rejected';
 type UserRole = 'admin' | 'user';
 
-interface Profile {
+export interface Profile {
   id: string;
   email: string;
   full_name: string | null;
   status: UserStatus;
+  role: UserRole;
+  created_at: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
   profile: Profile | null;
   isAdmin: boolean;
   isApproved: boolean;
@@ -29,100 +37,92 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (profileData) {
-      setProfile(profileData as Profile);
-    }
-
-    const { data: roleData } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .single();
-
-    if (roleData) {
-      setIsAdmin(roleData.role === 'admin');
+    const profileRef = ref(database, `profiles/${userId}`);
+    const snapshot = await get(profileRef);
+    
+    if (snapshot.exists()) {
+      const profileData = snapshot.val() as Profile;
+      setProfile(profileData);
+      setIsAdmin(profileData.role === 'admin');
     }
   };
 
   const refreshProfile = async () => {
     if (user) {
-      await fetchProfile(user.id);
+      await fetchProfile(user.uid);
     }
   };
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        // Defer profile fetch with setTimeout to avoid deadlock
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-          setIsAdmin(false);
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id).finally(() => setLoading(false));
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      
+      if (firebaseUser) {
+        // Listen for profile changes in realtime
+        const profileRef = ref(database, `profiles/${firebaseUser.uid}`);
+        onValue(profileRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const profileData = snapshot.val() as Profile;
+            setProfile(profileData);
+            setIsAdmin(profileData.role === 'admin');
+          }
+          setLoading(false);
+        });
       } else {
+        setProfile(null);
+        setIsAdmin(false);
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-        },
-      },
-    });
-    return { error };
+    try {
+      // Check if this is the first user
+      const profilesRef = ref(database, 'profiles');
+      const profilesSnapshot = await get(profilesRef);
+      const isFirstUser = !profilesSnapshot.exists();
+      
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const userId = userCredential.user.uid;
+      
+      // Create profile in Realtime Database
+      const newProfile: Profile = {
+        id: userId,
+        email,
+        full_name: fullName,
+        status: isFirstUser ? 'approved' : 'pending',
+        role: isFirstUser ? 'admin' : 'user',
+        created_at: new Date().toISOString()
+      };
+      
+      await set(ref(database, `profiles/${userId}`), newProfile);
+      
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error };
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await firebaseSignOut(auth);
     setUser(null);
-    setSession(null);
     setProfile(null);
     setIsAdmin(false);
   };
@@ -133,7 +133,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        session,
         profile,
         isAdmin,
         isApproved,
