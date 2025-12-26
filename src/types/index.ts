@@ -25,8 +25,10 @@ export interface Tenant {
   advancePaid: number;
   leaseStartDate: string;
   monthlyWaterBill: number;
+  aadharNumber?: string;
   aadharDocument?: string;
   aadharFileName?: string;
+  profilePhoto?: string;
   unitId: string;
   propertyId: string;
   createdAt: string;
