@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,18 @@ interface PropertyFormDialogProps {
 
 export function PropertyFormDialog({ open, onOpenChange, property }: PropertyFormDialogProps) {
   const { addProperty, updateProperty } = useStore();
-  const [name, setName] = useState(property?.name || '');
-  const [address, setAddress] = useState(property?.address || '');
-  const [totalUnits, setTotalUnits] = useState(property?.totalUnits?.toString() || '');
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [totalUnits, setTotalUnits] = useState('');
+
+  // Sync form data when dialog opens or property changes
+  useEffect(() => {
+    if (open) {
+      setName(property?.name || '');
+      setAddress(property?.address || '');
+      setTotalUnits(property?.totalUnits?.toString() || '');
+    }
+  }, [open, property]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
