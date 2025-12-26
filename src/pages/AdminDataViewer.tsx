@@ -49,10 +49,15 @@ export default function AdminDataViewer() {
   const [usersData, setUsersData] = useState<Record<string, UserData>>({});
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonth());
-  const [loading, setLoading] = useState(true);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      setProfilesLoading(false);
+      setDataLoading(false);
+      return;
+    }
 
     // Load all profiles from Firebase
     const profilesRef = ref(database, 'profiles');
@@ -65,6 +70,7 @@ export default function AdminDataViewer() {
       } else {
         setProfiles([]);
       }
+      setProfilesLoading(false);
     });
 
     // Load all users' data from Firebase
@@ -88,7 +94,7 @@ export default function AdminDataViewer() {
       } else {
         setUsersData({});
       }
-      setLoading(false);
+      setDataLoading(false);
     });
 
     return () => {
@@ -96,6 +102,8 @@ export default function AdminDataViewer() {
       unsubUsers();
     };
   }, [isAdmin]);
+
+  const loading = profilesLoading || dataLoading;
 
   const filteredData = useMemo(() => {
     let baseData: UserData & { properties: any[]; units: any[]; tenants: any[]; payments: any[]; expenses: any[] };
@@ -173,7 +181,8 @@ export default function AdminDataViewer() {
     return <Navigate to="/" replace />;
   }
 
-  const usersWithData = profiles.filter(p => usersData[p.id]);
+  // Show all profiles in dropdown (not just those with data)
+  const usersForDropdown = profiles;
 
   // Calculate stats
   const totalProperties = filteredData.properties.length;
@@ -200,7 +209,7 @@ export default function AdminDataViewer() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Users</SelectItem>
-                  {usersWithData.map((profile) => (
+                  {usersForDropdown.map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
                       {profile.full_name || profile.email}
                     </SelectItem>
