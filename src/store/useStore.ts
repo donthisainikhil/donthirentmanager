@@ -322,7 +322,8 @@ export const useStore = create<AppState>()((set, get) => ({
   
   // Tenant actions
   addTenant: async (tenant) => {
-    const userId = get().currentUserId;
+    const state = get();
+    const userId = state.currentUserId;
     if (!userId) throw new Error('User not authenticated');
     
     const id = uuidv4();
@@ -336,10 +337,51 @@ export const useStore = create<AppState>()((set, get) => ({
     await firebaseSet(ref(database, `users/${userId}/tenants/${id}`), newTenant);
     
     // Update unit to mark as occupied
+    const unit = state.units.find(u => u.id === tenant.unitId);
     await firebaseUpdate(ref(database, `users/${userId}/units/${tenant.unitId}`), {
       isOccupied: true,
       tenantId: id
     });
+    
+    // Auto-generate payment for current month if month has been started
+    const currentMonth = getCurrentMonth();
+    const monthStatus = state.monthlyStatuses.find(m => m.month === currentMonth);
+    
+    if (monthStatus?.isStarted && !monthStatus?.isClosed && unit) {
+      // Check if payment already exists for this unit and month
+      const existingPayment = state.payments.find(
+        p => p.unitId === tenant.unitId && p.month === currentMonth
+      );
+      
+      if (!existingPayment) {
+        const rentAmount = unit.monthlyRent;
+        const waterBill = tenant.monthlyWaterBill;
+        const totalAmount = rentAmount + waterBill;
+        
+        // Check if payment is overdue (past 10th of the month)
+        const now = new Date();
+        const [year, monthNum] = currentMonth.split('-').map(Number);
+        const dueDate = new Date(year, monthNum - 1, 10, 23, 59, 59);
+        const status = now > dueDate ? 'overdue' : 'pending';
+        
+        const paymentId = uuidv4();
+        const newPayment: RentPayment = {
+          id: paymentId,
+          tenantId: id,
+          unitId: unit.id,
+          propertyId: unit.propertyId,
+          month: currentMonth,
+          rentAmount,
+          waterBill,
+          totalAmount,
+          paidAmount: 0,
+          status,
+          createdAt: new Date().toISOString()
+        };
+        
+        await firebaseSet(ref(database, `users/${userId}/payments/${paymentId}`), newPayment);
+      }
+    }
   },
   
   updateTenant: async (id, tenant) => {
