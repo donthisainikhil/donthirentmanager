@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Receipt, Pencil, Trash2, FileText, IndianRupee, TrendingDown, Wallet } from 'lucide-react';
+import { Plus, Receipt, Pencil, Trash2, FileText, IndianRupee, TrendingDown, Wallet, X } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useExpenseStats } from '@/hooks/useDashboardStats';
 import { Layout } from '@/components/Layout';
@@ -22,6 +22,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 export default function Expenses() {
@@ -30,6 +36,7 @@ export default function Expenses() {
   const [showDialog, setShowDialog] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [viewReceipt, setViewReceipt] = useState<{ url: string; name: string } | null>(null);
 
   const monthExpenses = expenses.filter(e => e.month === selectedMonth);
 
@@ -126,9 +133,16 @@ export default function Expenses() {
                           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                             <span>{formatDate(expense.createdAt)}</span>
                             {expense.receiptDocument && (
-                              <Badge variant="success" className="text-xs">
+                              <Badge 
+                                variant="success" 
+                                className="text-xs cursor-pointer hover:opacity-80"
+                                onClick={() => setViewReceipt({ 
+                                  url: expense.receiptDocument!, 
+                                  name: expense.receiptFileName || 'Receipt' 
+                                })}
+                              >
                                 <FileText className="w-3 h-3 mr-1" />
-                                Receipt attached
+                                View Receipt
                               </Badge>
                             )}
                           </div>
@@ -202,6 +216,32 @@ export default function Expenses() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Receipt Viewer Dialog */}
+      <Dialog open={!!viewReceipt} onOpenChange={() => setViewReceipt(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{viewReceipt?.name}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center overflow-auto max-h-[70vh]">
+            {viewReceipt?.url.startsWith('data:application/pdf') ? (
+              <iframe 
+                src={viewReceipt.url} 
+                className="w-full h-[60vh] border rounded-lg"
+                title="Receipt PDF"
+              />
+            ) : (
+              <img 
+                src={viewReceipt?.url} 
+                alt="Receipt" 
+                className="max-w-full max-h-[60vh] object-contain rounded-lg"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
