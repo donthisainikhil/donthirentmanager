@@ -1,22 +1,45 @@
 import { useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import { DashboardStats, PropertyStats } from '@/types';
+import { getCurrentMonth } from '@/lib/formatters';
+
+// Helper to determine if a payment should be considered overdue
+const getEffectiveStatus = (payment: { status: string; month: string; paidAmount: number; totalAmount: number }) => {
+  const currentMonth = getCurrentMonth();
+  // If payment is not fully paid and the month is in the past, it's overdue
+  if (payment.paidAmount < payment.totalAmount && payment.month < currentMonth) {
+    return 'overdue';
+  }
+  return payment.status;
+};
 
 export const useDashboardStats = (month: string): DashboardStats => {
   const { payments, units, tenants } = useStore();
   
   return useMemo(() => {
     const monthPayments = payments.filter(p => p.month === month);
+    const currentMonth = getCurrentMonth();
     
     const totalCollected = monthPayments.reduce((sum, p) => sum + p.paidAmount, 0);
     const totalDue = monthPayments.reduce((sum, p) => sum + (p.totalAmount - p.paidAmount), 0);
+    
+    // Calculate overdue - consider both explicit overdue status AND past months with unpaid amounts
     const totalOverdue = monthPayments
-      .filter(p => p.status === 'overdue')
+      .filter(p => {
+        const effectiveStatus = getEffectiveStatus(p);
+        return effectiveStatus === 'overdue';
+      })
       .reduce((sum, p) => sum + (p.totalAmount - p.paidAmount), 0);
     
     const paidCount = monthPayments.filter(p => p.status === 'paid').length;
-    const pendingCount = monthPayments.filter(p => p.status === 'pending' || p.status === 'partial').length;
-    const overdueCount = monthPayments.filter(p => p.status === 'overdue').length;
+    const pendingCount = monthPayments.filter(p => {
+      const effectiveStatus = getEffectiveStatus(p);
+      return effectiveStatus === 'pending' || effectiveStatus === 'partial';
+    }).length;
+    const overdueCount = monthPayments.filter(p => {
+      const effectiveStatus = getEffectiveStatus(p);
+      return effectiveStatus === 'overdue';
+    }).length;
     
     const totalUnits = units.length;
     const occupiedUnits = units.filter(u => u.isOccupied).length;
@@ -38,6 +61,8 @@ export const usePropertyStats = (month: string): PropertyStats[] => {
   const { properties, payments, units } = useStore();
   
   return useMemo(() => {
+    const currentMonth = getCurrentMonth();
+    
     return properties.map(property => {
       const propertyPayments = payments.filter(
         p => p.propertyId === property.id && p.month === month
@@ -45,9 +70,17 @@ export const usePropertyStats = (month: string): PropertyStats[] => {
       const propertyUnits = units.filter(u => u.propertyId === property.id);
       
       const rentCollected = propertyPayments.reduce((sum, p) => sum + p.paidAmount, 0);
-      const rentDue = propertyPayments.reduce((sum, p) => sum + (p.totalAmount - p.paidAmount), 0);
+      const rentDue = propertyPayments
+        .filter(p => {
+          const effectiveStatus = getEffectiveStatus(p);
+          return effectiveStatus === 'pending' || effectiveStatus === 'partial';
+        })
+        .reduce((sum, p) => sum + (p.totalAmount - p.paidAmount), 0);
       const overdueAmount = propertyPayments
-        .filter(p => p.status === 'overdue')
+        .filter(p => {
+          const effectiveStatus = getEffectiveStatus(p);
+          return effectiveStatus === 'overdue';
+        })
         .reduce((sum, p) => sum + (p.totalAmount - p.paidAmount), 0);
       
       return {
