@@ -22,6 +22,7 @@ type ProfileRecord = {
   id: string;
   email: string;
   full_name: string | null;
+  property_name: string | null;
   status: UserStatus;
   created_at: string;
 };
@@ -41,7 +42,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isApproved: boolean;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName: string, propertyName: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -138,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, propertyName: string) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const userId = userCredential.user.uid;
@@ -154,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: userId,
         email,
         full_name: fullName,
+        property_name: propertyName,
         status: isFirstUser ? 'approved' : 'pending',
         created_at: now,
       };

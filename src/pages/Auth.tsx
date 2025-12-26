@@ -28,7 +28,9 @@ export default function Auth() {
   // Signup form state
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
-  const [signupFullName, setSignupFullName] = useState('');
+  const [signupFirstName, setSignupFirstName] = useState('');
+  const [signupLastName, setSignupLastName] = useState('');
+  const [signupPropertyName, setSignupPropertyName] = useState('');
 
   if (loading) {
     return (
@@ -78,8 +80,16 @@ export default function Auth() {
     try {
       emailSchema.parse(signupEmail);
       passwordSchema.parse(signupPassword);
-      if (!signupFullName.trim()) {
-        toast.error('Please enter your full name');
+      if (!signupFirstName.trim()) {
+        toast.error('Please enter your first name');
+        return;
+      }
+      if (!signupLastName.trim()) {
+        toast.error('Please enter your last name');
+        return;
+      }
+      if (!signupPropertyName.trim()) {
+        toast.error('Please enter your property name');
         return;
       }
     } catch (err) {
@@ -90,7 +100,8 @@ export default function Auth() {
     }
 
     setIsSubmitting(true);
-    const { error } = await signUp(signupEmail, signupPassword, signupFullName);
+    const fullName = `${signupFirstName.trim()} ${signupLastName.trim()}`;
+    const { error } = await signUp(signupEmail, signupPassword, fullName, signupPropertyName.trim());
     setIsSubmitting(false);
 
     if (error) {
@@ -256,14 +267,38 @@ export default function Auth() {
 
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-first-name">First Name</Label>
+                    <Input
+                      id="signup-first-name"
+                      type="text"
+                      placeholder="John"
+                      value={signupFirstName}
+                      onChange={(e) => setSignupFirstName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-last-name">Last Name</Label>
+                    <Input
+                      id="signup-last-name"
+                      type="text"
+                      placeholder="Doe"
+                      value={signupLastName}
+                      onChange={(e) => setSignupLastName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-name">Full Name</Label>
+                  <Label htmlFor="signup-property">Property Name</Label>
                   <Input
-                    id="signup-name"
+                    id="signup-property"
                     type="text"
-                    placeholder="John Doe"
-                    value={signupFullName}
-                    onChange={(e) => setSignupFullName(e.target.value)}
+                    placeholder="Sunrise Apartments"
+                    value={signupPropertyName}
+                    onChange={(e) => setSignupPropertyName(e.target.value)}
                     required
                   />
                 </div>

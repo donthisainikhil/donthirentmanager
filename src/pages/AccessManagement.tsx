@@ -15,7 +15,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 type UserStatus = 'pending' | 'approved' | 'rejected';
 
-type ProfileRecord = Omit<Profile, 'role'>;
+type ProfileRecord = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  property_name: string | null;
+  status: UserStatus;
+  created_at: string;
+};
 
 type RoleRecord = {
   role?: 'admin' | 'user';
@@ -214,6 +221,7 @@ export default function AccessManagement() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Property</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Joined</TableHead>
@@ -225,6 +233,7 @@ export default function AccessManagement() {
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">{u.full_name || '-'}</TableCell>
                         <TableCell>{u.email}</TableCell>
+                        <TableCell>{(u as any).property_name || '-'}</TableCell>
                         <TableCell>{getRoleBadge(u.role)}</TableCell>
                         <TableCell>{getStatusBadge(u.status)}</TableCell>
                         <TableCell>{format(new Date(u.created_at), 'MMM d, yyyy')}</TableCell>
