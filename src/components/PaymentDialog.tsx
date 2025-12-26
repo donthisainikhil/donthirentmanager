@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,8 @@ import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/formatters';
 import { RentPayment, PaymentMethod } from '@/types';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Banknote, Smartphone } from 'lucide-react';
+import { Banknote, Smartphone, Wallet } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface PaymentDialogProps {
   open: boolean;
@@ -18,30 +19,76 @@ interface PaymentDialogProps {
 
 export function PaymentDialog({ open, onOpenChange, payment }: PaymentDialogProps) {
   const { markPaymentPaid, tenants, units, properties } = useStore();
-  const [amount, setAmount] = useState((payment.totalAmount - payment.paidAmount).toString());
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-
+  
   const tenant = tenants.find(t => t.id === payment.tenantId);
   const unit = units.find(u => u.id === payment.unitId);
   const property = properties.find(p => p.id === payment.propertyId);
 
   const remainingAmount = payment.totalAmount - payment.paidAmount;
+  const advanceAvailable = tenant?.advancePaid || 0;
+
+  const [amount, setAmount] = useState(remainingAmount.toString());
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [useAdvance, setUseAdvance] = useState(false);
+  const [advanceAmount, setAdvanceAmount] = useState('0');
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      const remaining = payment.totalAmount - payment.paidAmount;
+      setAmount(remaining.toString());
+      setPaymentMethod('cash');
+      setUseAdvance(false);
+      setAdvanceAmount('0');
+    }
+  }, [open, payment]);
+
+  // Calculate how much advance to use
+  const advanceToUse = useAdvance ? Math.min(parseFloat(advanceAmount) || 0, advanceAvailable, remainingAmount) : 0;
+  const directPaymentNeeded = Math.max(0, remainingAmount - advanceToUse);
+
+  const handleAdvanceToggle = (checked: boolean) => {
+    setUseAdvance(checked);
+    if (checked) {
+      // Default to using full advance or remaining amount, whichever is smaller
+      const defaultAdvance = Math.min(advanceAvailable, remainingAmount);
+      setAdvanceAmount(defaultAdvance.toString());
+      setAmount(Math.max(0, remainingAmount - defaultAdvance).toString());
+    } else {
+      setAdvanceAmount('0');
+      setAmount(remainingAmount.toString());
+    }
+  };
+
+  const handleAdvanceAmountChange = (value: string) => {
+    const advAmt = Math.min(parseFloat(value) || 0, advanceAvailable, remainingAmount);
+    setAdvanceAmount(advAmt.toString());
+    setAmount(Math.max(0, remainingAmount - advAmt).toString());
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const paymentAmount = parseFloat(amount);
-    if (!paymentAmount || paymentAmount <= 0) {
+    const paymentAmount = parseFloat(amount) || 0;
+    const advanceUsed = useAdvance ? (parseFloat(advanceAmount) || 0) : 0;
+    const totalPaying = paymentAmount + advanceUsed;
+    
+    if (totalPaying <= 0) {
       toast.error('Please enter a valid amount');
       return;
     }
 
-    if (paymentAmount > remainingAmount) {
-      toast.error('Amount cannot exceed remaining balance');
+    if (totalPaying > remainingAmount) {
+      toast.error('Total amount cannot exceed remaining balance');
       return;
     }
 
-    markPaymentPaid(payment.id, paymentAmount, paymentMethod);
+    if (advanceUsed > advanceAvailable) {
+      toast.error('Advance amount exceeds available balance');
+      return;
+    }
+
+    markPaymentPaid(payment.id, paymentAmount, paymentMethod, advanceUsed);
     toast.success('Payment recorded successfully');
     onOpenChange(false);
   };
@@ -90,21 +137,64 @@ export function PaymentDialog({ open, onOpenChange, payment }: PaymentDialogProp
             </div>
           </div>
 
+          {/* Advance Balance Section */}
+          {advanceAvailable > 0 && (
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet className="w-4 h-4 text-primary" />
+                  <span className="font-medium">Advance Available</span>
+                </div>
+                <span className="font-bold text-primary">{formatCurrency(advanceAvailable)}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="useAdvance" 
+                  checked={useAdvance}
+                  onCheckedChange={handleAdvanceToggle}
+                />
+                <Label htmlFor="useAdvance" className="text-sm cursor-pointer">
+                  Use advance for this payment
+                </Label>
+              </div>
+              {useAdvance && (
+                <div className="space-y-2">
+                  <Label htmlFor="advanceAmount" className="text-sm">Amount to deduct from advance</Label>
+                  <Input
+                    id="advanceAmount"
+                    type="number"
+                    min="0"
+                    max={Math.min(advanceAvailable, remainingAmount)}
+                    value={advanceAmount}
+                    onChange={(e) => handleAdvanceAmountChange(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="amount">Payment Amount (₹)</Label>
+              <Label htmlFor="amount">
+                {useAdvance ? 'Additional Payment Amount (₹)' : 'Payment Amount (₹)'}
+              </Label>
               <Input
                 id="amount"
                 type="number"
                 min="0"
-                max={remainingAmount}
+                max={remainingAmount - advanceToUse}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
+              {useAdvance && advanceToUse > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  From advance: {formatCurrency(advanceToUse)} + Direct: {formatCurrency(parseFloat(amount) || 0)} = Total: {formatCurrency(advanceToUse + (parseFloat(amount) || 0))}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label>Payment Method</Label>
+              <Label>Payment Method {useAdvance && advanceToUse > 0 && parseFloat(amount) === 0 && '(for advance)'}</Label>
               <RadioGroup
                 value={paymentMethod}
                 onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}
