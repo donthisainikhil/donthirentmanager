@@ -9,15 +9,38 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useStore } from '@/store/useStore';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { CalendarIcon, Upload, Camera, User, X } from 'lucide-react';
+import { CalendarIcon, Upload, Camera, User, X, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tenant } from '@/types';
+import { z } from 'zod';
 
 interface TenantFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tenant?: Tenant | null;
 }
+
+// Validation schema
+const tenantSchema = z.object({
+  firstName: z.string().min(1, 'First name is required').max(50, 'First name is too long'),
+  lastName: z.string().min(1, 'Last name is required').max(50, 'Last name is too long'),
+  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  phone: z.string()
+    .min(10, 'Phone must be at least 10 digits')
+    .max(15, 'Phone is too long')
+    .regex(/^[0-9+\-\s]+$/, 'Invalid phone number format'),
+  phone2: z.string().optional(),
+  advancePaid: z.string().optional(),
+  monthlyWaterBill: z.string().optional(),
+  propertyId: z.string().min(1, 'Please select a property'),
+  unitId: z.string().min(1, 'Please select a unit'),
+  aadharNumber: z.string()
+    .regex(/^[0-9\s]*$/, 'Aadhar number should contain only digits')
+    .optional()
+    .or(z.literal('')),
+});
+
+type FieldErrors = Partial<Record<keyof z.infer<typeof tenantSchema> | 'leaseDate' | 'aadharDocument', string>>;
 
 export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialogProps) {
   const { properties, units, addTenant, updateTenant } = useStore();
@@ -41,8 +64,10 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
   const [aadharFileName, setAadharFileName] = useState<string | undefined>();
   const [profilePhoto, setProfilePhoto] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [touched, setTouched] = useState<Set<string>>(new Set());
 
-  // Sync form data when dialog opens or tenant changes
+  // Reset form when dialog opens/closes
   useEffect(() => {
     if (open) {
       setFormData({
@@ -61,12 +86,38 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
       setAadharFile(tenant?.aadharDocument);
       setAadharFileName(tenant?.aadharFileName);
       setProfilePhoto(tenant?.profilePhoto);
+      setErrors({});
+      setTouched(new Set());
     }
   }, [open, tenant]);
 
   const availableUnits = units.filter(
     u => u.propertyId === formData.propertyId && (!u.isOccupied || u.id === tenant?.unitId)
   );
+
+  const validateField = (field: string, value: string) => {
+    try {
+      const partialSchema = tenantSchema.pick({ [field]: true } as any);
+      partialSchema.parse({ [field]: value });
+      setErrors(prev => ({ ...prev, [field]: undefined }));
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        setErrors(prev => ({ ...prev, [field]: err.errors[0]?.message }));
+      }
+    }
+  };
+
+  const handleBlur = (field: string) => {
+    setTouched(prev => new Set(prev).add(field));
+    validateField(field, formData[field as keyof typeof formData] || '');
+  };
+
+  const handleChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (touched.has(field)) {
+      validateField(field, value);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -79,6 +130,7 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
       reader.onloadend = () => {
         setAadharFile(reader.result as string);
         setAadharFileName(file.name);
+        setErrors(prev => ({ ...prev, aadharDocument: undefined }));
       };
       reader.readAsDataURL(file);
     }
@@ -99,36 +151,60 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const validateForm = (): boolean => {
+    const newErrors: FieldErrors = {};
     
-    if (!formData.firstName || !formData.lastName || !formData.phone || !formData.unitId || !leaseDate) {
-      toast.error('Please fill all required fields');
-      return;
+    // Validate using zod schema
+    const result = tenantSchema.safeParse(formData);
+    if (!result.success) {
+      result.error.errors.forEach(err => {
+        const field = err.path[0] as keyof FieldErrors;
+        if (!newErrors[field]) {
+          newErrors[field] = err.message;
+        }
+      });
+    }
+
+    // Additional validations
+    if (!leaseDate) {
+      newErrors.leaseDate = 'Lease start date is required';
     }
 
     if (!tenant && !aadharFile) {
-      toast.error('Please upload Aadhar document');
+      newErrors.aadharDocument = 'Aadhar document is required';
+    }
+
+    setErrors(newErrors);
+    
+    // Mark all fields as touched
+    setTouched(new Set(Object.keys(formData)));
+
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      toast.error('Please fix the errors in the form');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // Build tenant data object, excluding undefined values (Firebase doesn't allow undefined)
       const tenantData: Record<string, any> = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         email: formData.email.trim() || '',
         phone: formData.phone.trim(),
         advancePaid: parseFloat(formData.advancePaid) || 0,
-        leaseStartDate: leaseDate.toISOString(),
+        leaseStartDate: leaseDate!.toISOString(),
         monthlyWaterBill: parseFloat(formData.monthlyWaterBill) || 0,
         unitId: formData.unitId,
         propertyId: formData.propertyId,
       };
 
-      // Only add optional fields if they have values
       if (formData.phone2?.trim()) {
         tenantData.phone2 = formData.phone2.trim();
       }
@@ -160,6 +236,16 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const ErrorMessage = ({ error }: { error?: string }) => {
+    if (!error) return null;
+    return (
+      <p className="text-sm text-destructive flex items-center gap-1 mt-1">
+        <AlertCircle className="w-3 h-3" />
+        {error}
+      </p>
+    );
   };
 
   return (
@@ -217,16 +303,22 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
               <Input
                 id="firstName"
                 value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                onChange={(e) => handleChange('firstName', e.target.value)}
+                onBlur={() => handleBlur('firstName')}
+                className={cn(errors.firstName && touched.has('firstName') && 'border-destructive')}
               />
+              {touched.has('firstName') && <ErrorMessage error={errors.firstName} />}
             </div>
             <div className="space-y-2">
               <Label htmlFor="lastName">Last Name *</Label>
               <Input
                 id="lastName"
                 value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                onChange={(e) => handleChange('lastName', e.target.value)}
+                onBlur={() => handleBlur('lastName')}
+                className={cn(errors.lastName && touched.has('lastName') && 'border-destructive')}
               />
+              {touched.has('lastName') && <ErrorMessage error={errors.lastName} />}
             </div>
           </div>
 
@@ -236,8 +328,12 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
               id="email"
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) => handleChange('email', e.target.value)}
+              onBlur={() => handleBlur('email')}
+              className={cn(errors.email && touched.has('email') && 'border-destructive')}
+              placeholder="example@email.com"
             />
+            {touched.has('email') && <ErrorMessage error={errors.email} />}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -246,15 +342,20 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
               <Input
                 id="phone"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                onBlur={() => handleBlur('phone')}
+                className={cn(errors.phone && touched.has('phone') && 'border-destructive')}
+                placeholder="9876543210"
               />
+              {touched.has('phone') && <ErrorMessage error={errors.phone} />}
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone2">Second Phone</Label>
               <Input
                 id="phone2"
                 value={formData.phone2}
-                onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
+                onChange={(e) => handleChange('phone2', e.target.value)}
+                placeholder="Optional"
               />
             </div>
           </div>
@@ -263,10 +364,14 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
             <Label>Property *</Label>
             <Select
               value={formData.propertyId}
-              onValueChange={(value) => setFormData({ ...formData, propertyId: value, unitId: '' })}
+              onValueChange={(value) => {
+                handleChange('propertyId', value);
+                handleChange('unitId', '');
+                setErrors(prev => ({ ...prev, propertyId: undefined }));
+              }}
               disabled={!!tenant}
             >
-              <SelectTrigger>
+              <SelectTrigger className={cn(errors.propertyId && 'border-destructive')}>
                 <SelectValue placeholder="Select property" />
               </SelectTrigger>
               <SelectContent>
@@ -277,26 +382,37 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                 ))}
               </SelectContent>
             </Select>
+            <ErrorMessage error={errors.propertyId} />
           </div>
 
           <div className="space-y-2">
             <Label>Unit *</Label>
             <Select
               value={formData.unitId}
-              onValueChange={(value) => setFormData({ ...formData, unitId: value })}
+              onValueChange={(value) => {
+                handleChange('unitId', value);
+                setErrors(prev => ({ ...prev, unitId: undefined }));
+              }}
               disabled={!formData.propertyId || !!tenant}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Select unit" />
+              <SelectTrigger className={cn(errors.unitId && 'border-destructive')}>
+                <SelectValue placeholder={formData.propertyId ? "Select unit" : "Select property first"} />
               </SelectTrigger>
               <SelectContent>
-                {availableUnits.map((unit) => (
-                  <SelectItem key={unit.id} value={unit.id}>
-                    {unit.unitNumber}
-                  </SelectItem>
-                ))}
+                {availableUnits.length === 0 ? (
+                  <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                    No available units
+                  </div>
+                ) : (
+                  availableUnits.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {unit.unitNumber} - ₹{unit.monthlyRent}/month
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
+            <ErrorMessage error={errors.unitId} />
           </div>
 
           <div className="space-y-2">
@@ -307,7 +423,8 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                   variant="outline"
                   className={cn(
                     "w-full justify-start text-left font-normal",
-                    !leaseDate && "text-muted-foreground"
+                    !leaseDate && "text-muted-foreground",
+                    errors.leaseDate && "border-destructive"
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
@@ -318,11 +435,15 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                 <Calendar
                   mode="single"
                   selected={leaseDate}
-                  onSelect={setLeaseDate}
+                  onSelect={(date) => {
+                    setLeaseDate(date);
+                    setErrors(prev => ({ ...prev, leaseDate: undefined }));
+                  }}
                   initialFocus
                 />
               </PopoverContent>
             </Popover>
+            <ErrorMessage error={errors.leaseDate} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -333,7 +454,8 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                 type="number"
                 min="0"
                 value={formData.advancePaid}
-                onChange={(e) => setFormData({ ...formData, advancePaid: e.target.value })}
+                onChange={(e) => handleChange('advancePaid', e.target.value)}
+                placeholder="0"
               />
             </div>
             <div className="space-y-2">
@@ -343,7 +465,8 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                 type="number"
                 min="0"
                 value={formData.monthlyWaterBill}
-                onChange={(e) => setFormData({ ...formData, monthlyWaterBill: e.target.value })}
+                onChange={(e) => handleChange('monthlyWaterBill', e.target.value)}
+                placeholder="0"
               />
             </div>
           </div>
@@ -353,10 +476,13 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
             <Input
               id="aadharNumber"
               value={formData.aadharNumber}
-              onChange={(e) => setFormData({ ...formData, aadharNumber: e.target.value })}
+              onChange={(e) => handleChange('aadharNumber', e.target.value)}
+              onBlur={() => handleBlur('aadharNumber')}
+              className={cn(errors.aadharNumber && touched.has('aadharNumber') && 'border-destructive')}
               placeholder="XXXX XXXX XXXX"
               maxLength={14}
             />
+            {touched.has('aadharNumber') && <ErrorMessage error={errors.aadharNumber} />}
           </div>
 
           <div className="space-y-2">
@@ -387,7 +513,10 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                 </Button>
               </div>
             )}
-            <div className="flex gap-2">
+            <div className={cn(
+              "flex gap-2",
+              errors.aadharDocument && "border border-destructive rounded-lg p-2"
+            )}>
               <Button
                 type="button"
                 variant="outline"
@@ -412,6 +541,7 @@ export function TenantFormDialog({ open, onOpenChange, tenant }: TenantFormDialo
                 Camera
               </Button>
             </div>
+            <ErrorMessage error={errors.aadharDocument} />
           </div>
 
           <DialogFooter>
