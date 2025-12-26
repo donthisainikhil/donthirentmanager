@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { onValue, ref, update } from 'firebase/database';
+import { onValue, ref, update, remove } from 'firebase/database';
 import { format } from 'date-fns';
-import { Check, Clock, Loader2, UserCheck, UserX, Users, X } from 'lucide-react';
+import { Check, Clock, Loader2, Trash2, UserCheck, UserX, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { database } from '@/lib/firebase';
@@ -12,6 +12,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 type UserStatus = 'pending' | 'approved' | 'rejected';
 
@@ -92,6 +103,24 @@ export default function AccessManagement() {
       toast.success(`User ${status === 'approved' ? 'approved' : 'rejected'} successfully`);
     } catch {
       toast.error('Failed to update user status');
+    }
+
+    setUpdatingUser(null);
+  };
+
+  const deleteUserPermanently = async (userId: string, userName: string) => {
+    setUpdatingUser(userId);
+
+    try {
+      // Delete all user data: profile, role, and user data
+      await Promise.all([
+        remove(ref(database, `profiles/${userId}`)),
+        remove(ref(database, `user_roles/${userId}`)),
+        remove(ref(database, `users/${userId}`)),
+      ]);
+      toast.success(`User "${userName}" and all their data deleted permanently`);
+    } catch {
+      toast.error('Failed to delete user');
     }
 
     setUpdatingUser(null);
@@ -255,6 +284,35 @@ export default function AccessManagement() {
                                   )}
                                 </Button>
                               )}
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    disabled={updatingUser === u.id}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete User Permanently?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will permanently delete <strong>{u.full_name || u.email}</strong> and all their data including properties, units, tenants, payments, and expenses. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      onClick={() => deleteUserPermanently(u.id, u.full_name || u.email)}
+                                    >
+                                      Delete Permanently
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </div>
                           )}
                         </TableCell>
