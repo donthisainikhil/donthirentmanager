@@ -151,10 +151,48 @@ export const useStore = create<AppState>()((set, get) => ({
       set({ tenants: objectToArray(data) });
     });
     
-    // Listen for payments changes
-    const paymentsUnsub = onValue(paymentsRef, (snapshot) => {
+    // Listen for payments changes and auto-update overdue status
+    const paymentsUnsub = onValue(paymentsRef, async (snapshot) => {
       const data = snapshot.val();
-      set({ payments: objectToArray(data) });
+      const payments = objectToArray<RentPayment>(data);
+      
+      // Check and update overdue payments
+      const currentMonth = getCurrentMonth();
+      const paymentsToUpdate: { id: string; status: 'overdue' }[] = [];
+      
+      payments.forEach(payment => {
+        // If payment is not fully paid and month is in the past, mark as overdue
+        if (
+          payment.paidAmount < payment.totalAmount &&
+          payment.month < currentMonth &&
+          payment.status !== 'overdue'
+        ) {
+          paymentsToUpdate.push({ id: payment.id, status: 'overdue' });
+        }
+      });
+      
+      // Update overdue payments in Firebase (batch update)
+      if (paymentsToUpdate.length > 0) {
+        const updates: Record<string, any> = {};
+        paymentsToUpdate.forEach(({ id }) => {
+          updates[`${basePath}/payments/${id}/status`] = 'overdue';
+        });
+        await firebaseUpdate(ref(database), updates);
+      }
+      
+      // Update local state with corrected statuses
+      const updatedPayments = payments.map(payment => {
+        if (
+          payment.paidAmount < payment.totalAmount &&
+          payment.month < currentMonth &&
+          payment.status !== 'overdue'
+        ) {
+          return { ...payment, status: 'overdue' as const };
+        }
+        return payment;
+      });
+      
+      set({ payments: updatedPayments });
     });
     
     // Listen for expenses changes
