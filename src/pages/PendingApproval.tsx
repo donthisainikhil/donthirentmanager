@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -5,6 +6,12 @@ import { Clock, LogOut } from 'lucide-react';
 
 export default function PendingApproval() {
   const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth', { replace: true });
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -28,7 +35,7 @@ export default function PendingApproval() {
           <p className="text-sm text-muted-foreground">
             You'll be able to access the app once your account is approved.
           </p>
-          <Button variant="outline" onClick={signOut} className="w-full mt-4">
+          <Button variant="outline" onClick={handleSignOut} className="w-full mt-4">
             <LogOut className="mr-2 h-4 w-4" />
             Sign Out
           </Button>
