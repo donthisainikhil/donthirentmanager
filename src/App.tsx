@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useStore } from "@/store/useStore";
 import Dashboard from "./pages/Dashboard";
@@ -15,16 +15,23 @@ import Expenses from "./pages/Expenses";
 import Auth from "./pages/Auth";
 import PendingApproval from "./pages/PendingApproval";
 import AccessManagement from "./pages/AccessManagement";
+import AdminDataViewer from "./pages/AdminDataViewer";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 function FirebaseInitializer({ children }: { children: React.ReactNode }) {
+  const { user, isApproved } = useAuth();
   const initializeData = useStore((state) => state.initializeData);
+  const resetStore = useStore((state) => state.resetStore);
   
   useEffect(() => {
-    initializeData();
-  }, [initializeData]);
+    if (user && isApproved) {
+      initializeData(user.uid);
+    } else {
+      resetStore();
+    }
+  }, [user?.uid, isApproved, initializeData, resetStore]);
   
   return <>{children}</>;
 }
@@ -85,6 +92,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <AccessManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin-data"
+                element={
+                  <ProtectedRoute>
+                    <AdminDataViewer />
                   </ProtectedRoute>
                 }
               />

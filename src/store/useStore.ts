@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ref, set as firebaseSet, get as firebaseGet, update as firebaseUpdate, remove, onValue } from 'firebase/database';
+import { ref, set as firebaseSet, get as firebaseGet, update as firebaseUpdate, remove, onValue, off } from 'firebase/database';
 import { database } from '@/lib/firebase';
 import { v4 as uuidv4 } from 'uuid';
 import { 
@@ -21,9 +21,13 @@ interface AppState {
   selectedMonth: string;
   loading: boolean;
   initialized: boolean;
+  currentUserId: string | null;
   
-  // Initialize data from Firebase
-  initializeData: () => void;
+  // Initialize data from Firebase for a specific user
+  initializeData: (userId: string) => void;
+  
+  // Reset store when user logs out
+  resetStore: () => void;
   
   // Property actions
   addProperty: (property: Omit<Property, 'id' | 'createdAt'>) => Promise<void>;
@@ -65,71 +69,14 @@ const getCurrentMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-// Initial properties data
-const initialProperties: Property[] = [
-  {
-    id: 'prop-1',
-    name: 'H.NO:1-10',
-    address: 'H.NO: 1-10, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'prop-2',
-    name: 'H.NO: 1-5/5',
-    address: 'H.NO: 1-5/5, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'prop-3',
-    name: 'H.No: 1-8',
-    address: 'H.NO: 1-8, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'prop-4',
-    name: 'Survey No: 119 Rooms',
-    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'prop-5',
-    name: 'Godown',
-    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'prop-6',
-    name: 'Janapriya Sheds',
-    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'prop-7',
-    name: 'MainRoad Commercial Shops-Plot No:11/D',
-    address: 'Plot NO: 11/D, Survey No: 45-51, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'prop-8',
-    name: 'Amrutha Rao Sheds',
-    address: 'Survey No:119, Maktha Mahaboobpet, HMT colony, Miyapur, Telangana-500049',
-    totalUnits: 0,
-    createdAt: new Date().toISOString()
-  }
-];
-
 // Helper to convert Firebase object to array
 const objectToArray = <T>(obj: Record<string, T> | null): T[] => {
   if (!obj) return [];
   return Object.values(obj);
 };
+
+// Store unsubscribe functions
+let unsubscribeFunctions: (() => void)[] = [];
 
 export const useStore = create<AppState>()((set, get) => ({
   properties: [],
@@ -141,149 +88,197 @@ export const useStore = create<AppState>()((set, get) => ({
   selectedMonth: getCurrentMonth(),
   loading: true,
   initialized: false,
+  currentUserId: null,
   
-  // Initialize data from Firebase with realtime listeners
-  initializeData: () => {
-    const state = get();
-    if (state.initialized) return;
+  // Reset store when user logs out
+  resetStore: () => {
+    // Unsubscribe from all Firebase listeners
+    unsubscribeFunctions.forEach(unsub => unsub());
+    unsubscribeFunctions = [];
     
-    // Set up realtime listeners for all collections
-    const propertiesRef = ref(database, 'properties');
-    const unitsRef = ref(database, 'units');
-    const tenantsRef = ref(database, 'tenants');
-    const paymentsRef = ref(database, 'payments');
-    const expensesRef = ref(database, 'expenses');
-    const monthlyStatusesRef = ref(database, 'monthlyStatuses');
-    
-    // Initialize properties with defaults if empty
-    firebaseGet(propertiesRef).then((snapshot) => {
-      if (!snapshot.exists()) {
-        // Set initial properties
-        const propertiesObj: Record<string, Property> = {};
-        initialProperties.forEach(prop => {
-          propertiesObj[prop.id] = prop;
-        });
-        firebaseSet(propertiesRef, propertiesObj);
-      }
+    set({
+      properties: [],
+      units: [],
+      tenants: [],
+      payments: [],
+      expenses: [],
+      monthlyStatuses: [],
+      selectedMonth: getCurrentMonth(),
+      loading: true,
+      initialized: false,
+      currentUserId: null,
     });
+  },
+  
+  // Initialize data from Firebase with realtime listeners for a specific user
+  initializeData: (userId: string) => {
+    const state = get();
+    
+    // If already initialized for this user, skip
+    if (state.initialized && state.currentUserId === userId) return;
+    
+    // If switching users, clean up old listeners
+    if (state.currentUserId && state.currentUserId !== userId) {
+      unsubscribeFunctions.forEach(unsub => unsub());
+      unsubscribeFunctions = [];
+    }
+    
+    // User-specific paths
+    const basePath = `users/${userId}`;
+    
+    const propertiesRef = ref(database, `${basePath}/properties`);
+    const unitsRef = ref(database, `${basePath}/units`);
+    const tenantsRef = ref(database, `${basePath}/tenants`);
+    const paymentsRef = ref(database, `${basePath}/payments`);
+    const expensesRef = ref(database, `${basePath}/expenses`);
+    const monthlyStatusesRef = ref(database, `${basePath}/monthlyStatuses`);
     
     // Listen for properties changes
-    onValue(propertiesRef, (snapshot) => {
+    const propertiesUnsub = onValue(propertiesRef, (snapshot) => {
       const data = snapshot.val();
       set({ properties: objectToArray(data), loading: false });
     });
     
     // Listen for units changes
-    onValue(unitsRef, (snapshot) => {
+    const unitsUnsub = onValue(unitsRef, (snapshot) => {
       const data = snapshot.val();
       set({ units: objectToArray(data) });
     });
     
     // Listen for tenants changes
-    onValue(tenantsRef, (snapshot) => {
+    const tenantsUnsub = onValue(tenantsRef, (snapshot) => {
       const data = snapshot.val();
       set({ tenants: objectToArray(data) });
     });
     
     // Listen for payments changes
-    onValue(paymentsRef, (snapshot) => {
+    const paymentsUnsub = onValue(paymentsRef, (snapshot) => {
       const data = snapshot.val();
       set({ payments: objectToArray(data) });
     });
     
     // Listen for expenses changes
-    onValue(expensesRef, (snapshot) => {
+    const expensesUnsub = onValue(expensesRef, (snapshot) => {
       const data = snapshot.val();
       set({ expenses: objectToArray(data) });
     });
     
     // Listen for monthly statuses changes
-    onValue(monthlyStatusesRef, (snapshot) => {
+    const monthlyStatusesUnsub = onValue(monthlyStatusesRef, (snapshot) => {
       const data = snapshot.val();
       set({ monthlyStatuses: objectToArray(data) });
     });
     
-    set({ initialized: true });
+    // Store unsubscribe functions
+    unsubscribeFunctions = [
+      () => off(propertiesRef),
+      () => off(unitsRef),
+      () => off(tenantsRef),
+      () => off(paymentsRef),
+      () => off(expensesRef),
+      () => off(monthlyStatusesRef),
+    ];
+    
+    set({ initialized: true, currentUserId: userId });
   },
   
   // Property actions
   addProperty: async (property) => {
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const id = uuidv4();
     const newProperty: Property = { 
       ...property, 
       id, 
       createdAt: new Date().toISOString() 
     };
-    await firebaseSet(ref(database, `properties/${id}`), newProperty);
+    await firebaseSet(ref(database, `users/${userId}/properties/${id}`), newProperty);
   },
   
   updateProperty: async (id, property) => {
-    await firebaseUpdate(ref(database, `properties/${id}`), property);
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
+    await firebaseUpdate(ref(database, `users/${userId}/properties/${id}`), property);
   },
   
   deleteProperty: async (id) => {
     const state = get();
+    const userId = state.currentUserId;
+    if (!userId) throw new Error('User not authenticated');
     
     // Delete property
-    await remove(ref(database, `properties/${id}`));
+    await remove(ref(database, `users/${userId}/properties/${id}`));
     
     // Delete related units
     const relatedUnits = state.units.filter(u => u.propertyId === id);
     for (const unit of relatedUnits) {
-      await remove(ref(database, `units/${unit.id}`));
+      await remove(ref(database, `users/${userId}/units/${unit.id}`));
     }
     
     // Delete related tenants
     const relatedTenants = state.tenants.filter(t => t.propertyId === id);
     for (const tenant of relatedTenants) {
-      await remove(ref(database, `tenants/${tenant.id}`));
+      await remove(ref(database, `users/${userId}/tenants/${tenant.id}`));
     }
     
     // Delete related payments
     const relatedPayments = state.payments.filter(p => p.propertyId === id);
     for (const payment of relatedPayments) {
-      await remove(ref(database, `payments/${payment.id}`));
+      await remove(ref(database, `users/${userId}/payments/${payment.id}`));
     }
     
     // Delete related expenses
     const relatedExpenses = state.expenses.filter(e => e.propertyId === id);
     for (const expense of relatedExpenses) {
-      await remove(ref(database, `expenses/${expense.id}`));
+      await remove(ref(database, `users/${userId}/expenses/${expense.id}`));
     }
   },
   
   // Unit actions
   addUnit: async (unit) => {
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const id = uuidv4();
     const newUnit: Unit = { ...unit, id };
-    await firebaseSet(ref(database, `units/${id}`), newUnit);
+    await firebaseSet(ref(database, `users/${userId}/units/${id}`), newUnit);
   },
   
   updateUnit: async (id, unit) => {
-    await firebaseUpdate(ref(database, `units/${id}`), unit);
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
+    await firebaseUpdate(ref(database, `users/${userId}/units/${id}`), unit);
   },
   
   deleteUnit: async (id) => {
     const state = get();
+    const userId = state.currentUserId;
+    if (!userId) throw new Error('User not authenticated');
     
     // Delete unit
-    await remove(ref(database, `units/${id}`));
+    await remove(ref(database, `users/${userId}/units/${id}`));
     
     // Delete related tenants
     const relatedTenants = state.tenants.filter(t => t.unitId === id);
     for (const tenant of relatedTenants) {
-      await remove(ref(database, `tenants/${tenant.id}`));
+      await remove(ref(database, `users/${userId}/tenants/${tenant.id}`));
     }
     
     // Delete related payments
     const relatedPayments = state.payments.filter(p => p.unitId === id);
     for (const payment of relatedPayments) {
-      await remove(ref(database, `payments/${payment.id}`));
+      await remove(ref(database, `users/${userId}/payments/${payment.id}`));
     }
   },
   
   // Tenant actions
   addTenant: async (tenant) => {
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const id = uuidv4();
     const newTenant: Tenant = { 
       ...tenant, 
@@ -292,29 +287,35 @@ export const useStore = create<AppState>()((set, get) => ({
     };
     
     // Add tenant
-    await firebaseSet(ref(database, `tenants/${id}`), newTenant);
+    await firebaseSet(ref(database, `users/${userId}/tenants/${id}`), newTenant);
     
     // Update unit to mark as occupied
-    await firebaseUpdate(ref(database, `units/${tenant.unitId}`), {
+    await firebaseUpdate(ref(database, `users/${userId}/units/${tenant.unitId}`), {
       isOccupied: true,
       tenantId: id
     });
   },
   
   updateTenant: async (id, tenant) => {
-    await firebaseUpdate(ref(database, `tenants/${id}`), tenant);
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
+    await firebaseUpdate(ref(database, `users/${userId}/tenants/${id}`), tenant);
   },
   
   deleteTenant: async (id) => {
     const state = get();
+    const userId = state.currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const tenant = state.tenants.find(t => t.id === id);
     
     if (tenant) {
       // Delete tenant
-      await remove(ref(database, `tenants/${id}`));
+      await remove(ref(database, `users/${userId}/tenants/${id}`));
       
       // Update unit to mark as vacant
-      await firebaseUpdate(ref(database, `units/${tenant.unitId}`), {
+      await firebaseUpdate(ref(database, `users/${userId}/units/${tenant.unitId}`), {
         isOccupied: false,
         tenantId: null
       });
@@ -322,35 +323,44 @@ export const useStore = create<AppState>()((set, get) => ({
       // Delete related payments
       const relatedPayments = state.payments.filter(p => p.tenantId === id);
       for (const payment of relatedPayments) {
-        await remove(ref(database, `payments/${payment.id}`));
+        await remove(ref(database, `users/${userId}/payments/${payment.id}`));
       }
     }
   },
   
   // Payment actions
   addPayment: async (payment) => {
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const id = uuidv4();
     const newPayment: RentPayment = { 
       ...payment, 
       id, 
       createdAt: new Date().toISOString() 
     };
-    await firebaseSet(ref(database, `payments/${id}`), newPayment);
+    await firebaseSet(ref(database, `users/${userId}/payments/${id}`), newPayment);
   },
   
   updatePayment: async (id, payment) => {
-    await firebaseUpdate(ref(database, `payments/${id}`), payment);
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
+    await firebaseUpdate(ref(database, `users/${userId}/payments/${id}`), payment);
   },
   
   markPaymentPaid: async (id, amount) => {
     const state = get();
+    const userId = state.currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const payment = state.payments.find(p => p.id === id);
     
     if (payment) {
       const newPaidAmount = payment.paidAmount + amount;
       const status = newPaidAmount >= payment.totalAmount ? 'paid' : 'partial';
       
-      await firebaseUpdate(ref(database, `payments/${id}`), {
+      await firebaseUpdate(ref(database, `users/${userId}/payments/${id}`), {
         paidAmount: newPaidAmount,
         paidDate: new Date().toISOString(),
         status
@@ -360,21 +370,30 @@ export const useStore = create<AppState>()((set, get) => ({
   
   // Expense actions
   addExpense: async (expense) => {
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const id = uuidv4();
     const newExpense: Expense = { 
       ...expense, 
       id, 
       createdAt: new Date().toISOString() 
     };
-    await firebaseSet(ref(database, `expenses/${id}`), newExpense);
+    await firebaseSet(ref(database, `users/${userId}/expenses/${id}`), newExpense);
   },
   
   updateExpense: async (id, expense) => {
-    await firebaseUpdate(ref(database, `expenses/${id}`), expense);
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
+    await firebaseUpdate(ref(database, `users/${userId}/expenses/${id}`), expense);
   },
   
   deleteExpense: async (id) => {
-    await remove(ref(database, `expenses/${id}`));
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
+    await remove(ref(database, `users/${userId}/expenses/${id}`));
   },
   
   // Month actions
@@ -382,6 +401,9 @@ export const useStore = create<AppState>()((set, get) => ({
   
   startMonth: async (month) => {
     const state = get();
+    const userId = state.currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const existing = state.monthlyStatuses.find(m => m.month === month);
     if (existing?.isStarted) return;
     
@@ -395,11 +417,14 @@ export const useStore = create<AppState>()((set, get) => ({
       startedAt: new Date().toISOString()
     };
     
-    await firebaseSet(ref(database, `monthlyStatuses/${month}`), newStatus);
+    await firebaseSet(ref(database, `users/${userId}/monthlyStatuses/${month}`), newStatus);
   },
   
   closeMonth: async (month) => {
-    await firebaseUpdate(ref(database, `monthlyStatuses/${month}`), {
+    const userId = get().currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
+    await firebaseUpdate(ref(database, `users/${userId}/monthlyStatuses/${month}`), {
       isClosed: true,
       closedAt: new Date().toISOString()
     });
@@ -408,6 +433,9 @@ export const useStore = create<AppState>()((set, get) => ({
   // Generate monthly payments for all tenants
   generateMonthlyPayments: async (month) => {
     const state = get();
+    const userId = state.currentUserId;
+    if (!userId) throw new Error('User not authenticated');
+    
     const existingPaymentsForMonth = state.payments.filter(p => p.month === month);
     const tenantsWithPayments = new Set(existingPaymentsForMonth.map(p => p.tenantId));
     
@@ -440,7 +468,7 @@ export const useStore = create<AppState>()((set, get) => ({
         createdAt: new Date().toISOString()
       };
       
-      await firebaseSet(ref(database, `payments/${id}`), newPayment);
+      await firebaseSet(ref(database, `users/${userId}/payments/${id}`), newPayment);
     }
   }
 }));
