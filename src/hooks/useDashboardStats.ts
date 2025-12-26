@@ -142,3 +142,41 @@ export const useExpenseStats = (month: string) => {
     };
   }, [expenses, payments, month]);
 };
+
+export interface RentProjection {
+  propertyId: string;
+  propertyName: string;
+  projectedRent: number;
+  occupiedUnits: number;
+  totalUnits: number;
+}
+
+export const useRentProjection = (): { projections: RentProjection[]; totalProjection: number } => {
+  const { properties, units, tenants } = useStore();
+  
+  return useMemo(() => {
+    const projections: RentProjection[] = properties.map(property => {
+      const propertyUnits = units.filter(u => u.propertyId === property.id);
+      const occupiedUnits = propertyUnits.filter(u => u.isOccupied);
+      
+      // Calculate projected rent from occupied units (rent + water bill from tenant)
+      const projectedRent = occupiedUnits.reduce((sum, unit) => {
+        const tenant = tenants.find(t => t.unitId === unit.id);
+        const waterBill = tenant?.monthlyWaterBill || 0;
+        return sum + unit.monthlyRent + waterBill;
+      }, 0);
+      
+      return {
+        propertyId: property.id,
+        propertyName: property.name,
+        projectedRent,
+        occupiedUnits: occupiedUnits.length,
+        totalUnits: propertyUnits.length
+      };
+    });
+    
+    const totalProjection = projections.reduce((sum, p) => sum + p.projectedRent, 0);
+    
+    return { projections, totalProjection };
+  }, [properties, units, tenants]);
+};

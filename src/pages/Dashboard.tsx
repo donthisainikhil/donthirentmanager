@@ -12,10 +12,11 @@ import {
   TrendingUp,
   CalendarClock,
   Banknote,
-  Smartphone
+  Smartphone,
+  Target
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { useDashboardStats, usePropertyStats, useExpenseStats, getEffectiveStatus } from '@/hooks/useDashboardStats';
+import { useDashboardStats, usePropertyStats, useExpenseStats, useRentProjection, getEffectiveStatus } from '@/hooks/useDashboardStats';
 import { formatCurrency, formatMonth, getCurrentMonth } from '@/lib/formatters';
 import { Layout } from '@/components/Layout';
 import { MonthSelector } from '@/components/MonthSelector';
@@ -111,6 +112,7 @@ export default function Dashboard() {
   const stats = useDashboardStats(selectedMonth);
   const propertyStats = usePropertyStats(selectedMonth);
   const expenseStats = useExpenseStats(selectedMonth);
+  const { projections: rentProjections, totalProjection } = useRentProjection();
   
   const [showCollectedDialog, setShowCollectedDialog] = useState(false);
   const [showDueDialog, setShowDueDialog] = useState(false);
@@ -302,7 +304,60 @@ export default function Dashboard() {
           </Card>
         </motion.div>
 
-        {/* Property-wise Summary */}
+        {/* Rent Projection */}
+        {rentProjections.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="w-5 h-5" />
+                  Monthly Rent Projection
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Total Projection */}
+                <div className="p-4 bg-primary/10 rounded-xl border border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Expected Collection</p>
+                      <p className="text-3xl font-bold text-primary">{formatCurrency(totalProjection)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">From Occupied Units</p>
+                      <p className="text-lg font-semibold">{stats.occupiedUnits} of {stats.totalUnits} units</p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Property-wise Projections */}
+                <div className="space-y-3">
+                  {rentProjections.map((projection) => (
+                    <div
+                      key={projection.propertyId}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-muted rounded-xl gap-3"
+                    >
+                      <div>
+                        <p className="font-semibold">{projection.propertyName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {projection.occupiedUnits}/{projection.totalUnits} units occupied
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground">Expected Rent</p>
+                        <p className="text-xl font-bold text-primary">{formatCurrency(projection.projectedRent)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {propertyStats.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
