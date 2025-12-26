@@ -2,12 +2,18 @@ import { useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import { DashboardStats, PropertyStats } from '@/types';
 import { getCurrentMonth } from '@/lib/formatters';
+import { parse, isAfter } from 'date-fns';
 
 // Helper to determine if a payment should be considered overdue
+// Rent is due by 10th of every month - anything not paid by 10th is overdue
 const getEffectiveStatus = (payment: { status: string; month: string; paidAmount: number; totalAmount: number }) => {
-  const currentMonth = getCurrentMonth();
-  // If payment is not fully paid and the month is in the past, it's overdue
-  if (payment.paidAmount < payment.totalAmount && payment.month < currentMonth) {
+  const now = new Date();
+  const paymentMonth = parse(payment.month, 'yyyy-MM', new Date());
+  // Due date is the 10th of the payment month
+  const dueDate = new Date(paymentMonth.getFullYear(), paymentMonth.getMonth(), 10, 23, 59, 59);
+  
+  // If payment is not fully paid and we're past the 10th of that month, it's overdue
+  if (payment.paidAmount < payment.totalAmount && isAfter(now, dueDate)) {
     return 'overdue';
   }
   return payment.status;

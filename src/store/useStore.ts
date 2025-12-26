@@ -157,14 +157,19 @@ export const useStore = create<AppState>()((set, get) => ({
       const payments = objectToArray<RentPayment>(data);
       
       // Check and update overdue payments
-      const currentMonth = getCurrentMonth();
+      // Rent is due by 10th of every month - anything not paid by 10th is overdue
+      const now = new Date();
       const paymentsToUpdate: { id: string; status: 'overdue' }[] = [];
       
       payments.forEach(payment => {
-        // If payment is not fully paid and month is in the past, mark as overdue
+        // Parse payment month to get the due date (10th of that month)
+        const [year, month] = payment.month.split('-').map(Number);
+        const dueDate = new Date(year, month - 1, 10, 23, 59, 59);
+        
+        // If payment is not fully paid and we're past the 10th, mark as overdue
         if (
           payment.paidAmount < payment.totalAmount &&
-          payment.month < currentMonth &&
+          now > dueDate &&
           payment.status !== 'overdue'
         ) {
           paymentsToUpdate.push({ id: payment.id, status: 'overdue' });
@@ -182,9 +187,12 @@ export const useStore = create<AppState>()((set, get) => ({
       
       // Update local state with corrected statuses
       const updatedPayments = payments.map(payment => {
+        const [year, month] = payment.month.split('-').map(Number);
+        const dueDate = new Date(year, month - 1, 10, 23, 59, 59);
+        
         if (
           payment.paidAmount < payment.totalAmount &&
-          payment.month < currentMonth &&
+          now > dueDate &&
           payment.status !== 'overdue'
         ) {
           return { ...payment, status: 'overdue' as const };
@@ -487,9 +495,11 @@ export const useStore = create<AppState>()((set, get) => ({
       const waterBill = tenant.monthlyWaterBill;
       const totalAmount = rentAmount + waterBill;
       
-      // Check if payment is overdue (past current month)
-      const currentMonth = getCurrentMonth();
-      const status = month < currentMonth ? 'overdue' : 'pending';
+      // Check if payment is overdue (past 10th of the payment month)
+      const now = new Date();
+      const [year, monthNum] = month.split('-').map(Number);
+      const dueDate = new Date(year, monthNum - 1, 10, 23, 59, 59);
+      const status = now > dueDate ? 'overdue' : 'pending';
       
       const id = uuidv4();
       const newPayment: RentPayment = {
