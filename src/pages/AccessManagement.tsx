@@ -32,32 +32,47 @@ export default function AccessManagement() {
   const [updatingUser, setUpdatingUser] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      console.log('[AccessManagement] Not admin, skipping data fetch');
+      return;
+    }
 
+    console.log('[AccessManagement] Setting up Firebase listeners');
     const profilesRef = ref(database, 'profiles');
     const rolesRef = ref(database, 'user_roles');
 
     const unsubProfiles = onValue(profilesRef, (snapshot) => {
+      console.log('[AccessManagement] Profiles snapshot received:', snapshot.exists());
       if (snapshot.exists()) {
         const profilesData = snapshot.val();
+        console.log('[AccessManagement] Profiles data:', profilesData);
         const list = Object.values(profilesData) as ProfileRecord[];
         list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setProfiles(list);
       } else {
+        console.log('[AccessManagement] No profiles found');
         setProfiles([]);
       }
+      setProfilesLoading(false);
+    }, (error) => {
+      console.error('[AccessManagement] Profiles listener error:', error);
       setProfilesLoading(false);
     });
 
     const unsubRoles = onValue(rolesRef, (snapshot) => {
+      console.log('[AccessManagement] Roles snapshot received:', snapshot.exists());
       const map: Record<string, 'admin' | 'user'> = {};
       if (snapshot.exists()) {
         const rolesData = snapshot.val() as Record<string, RoleRecord>;
+        console.log('[AccessManagement] Roles data:', rolesData);
         Object.entries(rolesData).forEach(([uid, rec]) => {
           map[uid] = rec?.role === 'admin' ? 'admin' : 'user';
         });
       }
       setRolesByUserId(map);
+      setRolesLoading(false);
+    }, (error) => {
+      console.error('[AccessManagement] Roles listener error:', error);
       setRolesLoading(false);
     });
 
