@@ -1,24 +1,38 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { 
-  User, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
+import {
+  User,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  onAuthStateChanged
+  onAuthStateChanged,
 } from 'firebase/auth';
-import { ref, set, get, onValue } from 'firebase/database';
+import {
+  ref,
+  set as firebaseSet,
+  get as firebaseGet,
+  onValue,
+  runTransaction,
+} from 'firebase/database';
 import { auth, database } from '@/lib/firebase';
 
 type UserStatus = 'pending' | 'approved' | 'rejected';
 type UserRole = 'admin' | 'user';
 
-export interface Profile {
+type ProfileRecord = {
   id: string;
   email: string;
   full_name: string | null;
   status: UserStatus;
+  created_at: string;
+};
+
+type RoleRecord = {
   role: UserRole;
   created_at: string;
+};
+
+export interface Profile extends ProfileRecord {
+  role: UserRole;
 }
 
 interface AuthContextType {
@@ -43,13 +57,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     const profileRef = ref(database, `profiles/${userId}`);
-    const snapshot = await get(profileRef);
-    
-    if (snapshot.exists()) {
-      const profileData = snapshot.val() as Profile;
-      setProfile(profileData);
-      setIsAdmin(profileData.role === 'admin');
+    const roleRef = ref(database, `user_roles/${userId}`);
+
+    const [profileSnap, roleSnap] = await Promise.all([
+      firebaseGet(profileRef),
+      firebaseGet(roleRef),
+    ]);
+
+    if (!profileSnap.exists()) {
+      setProfile(null);
+      setIsAdmin(false);
+      return;
     }
+
+    const base = profileSnap.val() as ProfileRecord;
+    const role = roleSnap.exists() ? ((roleSnap.val() as RoleRecord).role ?? 'user') : 'user';
+
+    setProfile({ ...base, role });
+    setIsAdmin(role === 'admin');
   };
 
   const refreshProfile = async () => {
@@ -59,52 +84,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let profileUnsub: undefined | (() => void);
+    let roleUnsub: undefined | (() => void);
+
+    const authUnsub = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
-      
-      if (firebaseUser) {
-        // Listen for profile changes in realtime
-        const profileRef = ref(database, `profiles/${firebaseUser.uid}`);
-        onValue(profileRef, (snapshot) => {
-          if (snapshot.exists()) {
-            const profileData = snapshot.val() as Profile;
-            setProfile(profileData);
-            setIsAdmin(profileData.role === 'admin');
-          }
-          setLoading(false);
-        });
-      } else {
+
+      // Clean up previous listeners
+      profileUnsub?.();
+      roleUnsub?.();
+      profileUnsub = undefined;
+      roleUnsub = undefined;
+
+      if (!firebaseUser) {
         setProfile(null);
         setIsAdmin(false);
         setLoading(false);
+        return;
       }
+
+      setLoading(true);
+
+      const profileRef = ref(database, `profiles/${firebaseUser.uid}`);
+      const roleRef = ref(database, `user_roles/${firebaseUser.uid}`);
+
+      profileUnsub = onValue(profileRef, (snapshot) => {
+        if (!snapshot.exists()) {
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        const base = snapshot.val() as ProfileRecord;
+        setProfile((prev) => ({
+          ...base,
+          role: prev?.role ?? 'user',
+        }));
+        setLoading(false);
+      });
+
+      roleUnsub = onValue(roleRef, (snapshot) => {
+        const role = snapshot.exists() ? ((snapshot.val() as RoleRecord).role ?? 'user') : 'user';
+        setIsAdmin(role === 'admin');
+        setProfile((prev) => (prev ? { ...prev, role } : prev));
+        setLoading(false);
+      });
     });
 
-    return () => unsubscribe();
+    return () => {
+      authUnsub();
+      profileUnsub?.();
+      roleUnsub?.();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      // Check if this is the first user
-      const profilesRef = ref(database, 'profiles');
-      const profilesSnapshot = await get(profilesRef);
-      const isFirstUser = !profilesSnapshot.exists();
-      
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const userId = userCredential.user.uid;
-      
-      // Create profile in Realtime Database
-      const newProfile: Profile = {
+
+      // Claim "first admin" atomically (prevents multiple users becoming admin)
+      const claimRef = ref(database, 'meta/firstAdminUid');
+      const claimResult = await runTransaction(claimRef, (current) => current ?? userId);
+      const isFirstUser = claimResult.snapshot.val() === userId;
+
+      const now = new Date().toISOString();
+
+      const profileRecord: ProfileRecord = {
         id: userId,
         email,
         full_name: fullName,
         status: isFirstUser ? 'approved' : 'pending',
-        role: isFirstUser ? 'admin' : 'user',
-        created_at: new Date().toISOString()
+        created_at: now,
       };
-      
-      await set(ref(database, `profiles/${userId}`), newProfile);
-      
+
+      const roleRecord: RoleRecord = {
+        role: isFirstUser ? 'admin' : 'user',
+        created_at: now,
+      };
+
+      // Store profile + role separately (roles are NOT stored on the profile)
+      await Promise.all([
+        firebaseSet(ref(database, `profiles/${userId}`), profileRecord),
+        firebaseSet(ref(database, `user_roles/${userId}`), roleRecord),
+      ]);
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -155,3 +219,4 @@ export function useAuth() {
   }
   return context;
 }
+

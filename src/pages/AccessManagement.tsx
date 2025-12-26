@@ -1,59 +1,92 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { ref, get, update, onValue } from 'firebase/database';
+import { onValue, ref, update } from 'firebase/database';
+import { format } from 'date-fns';
+import { Check, Clock, Loader2, UserCheck, UserX, Users, X } from 'lucide-react';
+import { toast } from 'sonner';
+
 import { database } from '@/lib/firebase';
 import { Layout } from '@/components/Layout';
 import { useAuth, Profile } from '@/contexts/AuthContext';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { toast } from 'sonner';
-import { Check, X, Loader2, Users, UserCheck, UserX, Clock } from 'lucide-react';
-import { format } from 'date-fns';
 
 type UserStatus = 'pending' | 'approved' | 'rejected';
 
+type ProfileRecord = Omit<Profile, 'role'>;
+
+type RoleRecord = {
+  role?: 'admin' | 'user';
+  created_at?: string;
+};
+
 export default function AccessManagement() {
   const { isAdmin, loading: authLoading, isApproved } = useAuth();
-  const [users, setUsers] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
+  const [rolesByUserId, setRolesByUserId] = useState<Record<string, 'admin' | 'user'>>({});
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [rolesLoading, setRolesLoading] = useState(true);
   const [updatingUser, setUpdatingUser] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isAdmin) {
-      // Listen for realtime updates to profiles
-      const profilesRef = ref(database, 'profiles');
-      const unsubscribe = onValue(profilesRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const profilesData = snapshot.val();
-          const profilesList = Object.values(profilesData) as Profile[];
-          // Sort by created_at descending
-          profilesList.sort((a, b) => 
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-          setUsers(profilesList);
-        } else {
-          setUsers([]);
-        }
-        setLoading(false);
-      });
+    if (!isAdmin) return;
 
-      return () => unsubscribe();
-    }
+    const profilesRef = ref(database, 'profiles');
+    const rolesRef = ref(database, 'user_roles');
+
+    const unsubProfiles = onValue(profilesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const profilesData = snapshot.val();
+        const list = Object.values(profilesData) as ProfileRecord[];
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setProfiles(list);
+      } else {
+        setProfiles([]);
+      }
+      setProfilesLoading(false);
+    });
+
+    const unsubRoles = onValue(rolesRef, (snapshot) => {
+      const map: Record<string, 'admin' | 'user'> = {};
+      if (snapshot.exists()) {
+        const rolesData = snapshot.val() as Record<string, RoleRecord>;
+        Object.entries(rolesData).forEach(([uid, rec]) => {
+          map[uid] = rec?.role === 'admin' ? 'admin' : 'user';
+        });
+      }
+      setRolesByUserId(map);
+      setRolesLoading(false);
+    });
+
+    return () => {
+      unsubProfiles();
+      unsubRoles();
+    };
   }, [isAdmin]);
+
+  const users: Profile[] = useMemo(() => {
+    return profiles.map((p) => ({
+      ...p,
+      role: rolesByUserId[p.id] ?? 'user',
+    })) as Profile[];
+  }, [profiles, rolesByUserId]);
+
+  const loading = profilesLoading || rolesLoading;
 
   const updateUserStatus = async (userId: string, status: UserStatus) => {
     setUpdatingUser(userId);
-    
+
     try {
       const profileRef = ref(database, `profiles/${userId}`);
       await update(profileRef, { status });
       toast.success(`User ${status === 'approved' ? 'approved' : 'rejected'} successfully`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update user status');
     }
-    
+
     setUpdatingUser(null);
   };
 
@@ -82,7 +115,11 @@ export default function AccessManagement() {
       case 'approved':
         return <Badge className="bg-success text-success-foreground">Approved</Badge>;
       case 'pending':
-        return <Badge variant="secondary" className="bg-warning/20 text-warning border-warning">Pending</Badge>;
+        return (
+          <Badge variant="secondary" className="bg-warning/20 text-warning border-warning">
+            Pending
+          </Badge>
+        );
       case 'rejected':
         return <Badge variant="destructive">Rejected</Badge>;
     }
@@ -101,9 +138,7 @@ export default function AccessManagement() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Access Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage user access and approvals
-          </p>
+          <p className="text-muted-foreground mt-1">Manage user access and approvals</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
@@ -148,9 +183,7 @@ export default function AccessManagement() {
         <Card>
           <CardHeader>
             <CardTitle>Users</CardTitle>
-            <CardDescription>
-              Review and manage user access requests
-            </CardDescription>
+            <CardDescription>Review and manage user access requests</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -158,9 +191,7 @@ export default function AccessManagement() {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : users.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No users found
-              </div>
+              <div className="text-center py-8 text-muted-foreground">No users found</div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -175,44 +206,40 @@ export default function AccessManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">
-                          {user.full_name || '-'}
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{getRoleBadge(user.role)}</TableCell>
-                        <TableCell>{getStatusBadge(user.status)}</TableCell>
-                        <TableCell>
-                          {format(new Date(user.created_at), 'MMM d, yyyy')}
-                        </TableCell>
+                    {users.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.full_name || '-'}</TableCell>
+                        <TableCell>{u.email}</TableCell>
+                        <TableCell>{getRoleBadge(u.role)}</TableCell>
+                        <TableCell>{getStatusBadge(u.status)}</TableCell>
+                        <TableCell>{format(new Date(u.created_at), 'MMM d, yyyy')}</TableCell>
                         <TableCell className="text-right">
-                          {user.role !== 'admin' && (
+                          {u.role !== 'admin' && (
                             <div className="flex justify-end gap-2">
-                              {user.status !== 'approved' && (
+                              {u.status !== 'approved' && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className="text-success hover:text-success hover:bg-success/10"
-                                  onClick={() => updateUserStatus(user.id, 'approved')}
-                                  disabled={updatingUser === user.id}
+                                  onClick={() => updateUserStatus(u.id, 'approved')}
+                                  disabled={updatingUser === u.id}
                                 >
-                                  {updatingUser === user.id ? (
+                                  {updatingUser === u.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : (
                                     <Check className="h-4 w-4" />
                                   )}
                                 </Button>
                               )}
-                              {user.status !== 'rejected' && (
+                              {u.status !== 'rejected' && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                  onClick={() => updateUserStatus(user.id, 'rejected')}
-                                  disabled={updatingUser === user.id}
+                                  onClick={() => updateUserStatus(u.id, 'rejected')}
+                                  disabled={updatingUser === u.id}
                                 >
-                                  {updatingUser === user.id ? (
+                                  {updatingUser === u.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : (
                                     <X className="h-4 w-4" />
