@@ -65,15 +65,25 @@ export function ExpenseFormDialog({ open, onOpenChange, expense }: ExpenseFormDi
       return;
     }
 
-    const expenseData = {
+    // Build expense data without undefined values (Firebase doesn't accept undefined)
+    const expenseData: Omit<Expense, 'id' | 'createdAt'> = {
       month: formData.month,
-      propertyId: formData.propertyId || undefined,
       personName: formData.personName,
       amount: parseFloat(formData.amount),
       purpose: formData.purpose,
-      comments: formData.comments || undefined,
-      ...(receiptFile && { receiptDocument: receiptFile, receiptFileName }),
     };
+
+    // Only add optional fields if they have values
+    if (formData.propertyId) {
+      expenseData.propertyId = formData.propertyId;
+    }
+    if (formData.comments) {
+      expenseData.comments = formData.comments;
+    }
+    if (receiptFile) {
+      expenseData.receiptDocument = receiptFile;
+      expenseData.receiptFileName = receiptFileName;
+    }
 
     if (expense) {
       updateExpense(expense.id, expenseData);
