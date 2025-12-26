@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Users, Phone, Mail, Building2, Home, Pencil, Trash2, FileText, Eye, X, Image } from 'lucide-react';
+import { Plus, Users, Phone, Mail, Building2, Home, Pencil, Trash2, FileText, Eye, History, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TenantFormDialog } from '@/components/TenantFormDialog';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import { formatCurrency, formatDate, formatMonth } from '@/lib/formatters';
 import { Tenant } from '@/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -28,11 +29,18 @@ import {
 import { toast } from 'sonner';
 
 export default function Tenants() {
-  const { tenants, units, properties, deleteTenant } = useStore();
+  const { tenants, units, properties, payments, deleteTenant } = useStore();
   const [showDialog, setShowDialog] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [viewingTenant, setViewingTenant] = useState<Tenant | null>(null);
+
+  // Get payment history for the viewing tenant
+  const tenantPayments = viewingTenant 
+    ? payments
+        .filter(p => p.tenantId === viewingTenant.id)
+        .sort((a, b) => b.month.localeCompare(a.month))
+    : [];
 
   const handleEdit = (tenant: Tenant) => {
     setEditingTenant(tenant);
@@ -224,100 +232,206 @@ export default function Tenants() {
             <DialogTitle>Tenant Profile</DialogTitle>
           </DialogHeader>
           {viewingTenant && (
-            <div className="space-y-6">
-              {/* Profile Photo */}
-              <div className="flex justify-center">
-                {viewingTenant.profilePhoto ? (
-                  <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-primary/20">
-                    <img 
-                      src={viewingTenant.profilePhoto} 
-                      alt={`${viewingTenant.firstName} ${viewingTenant.lastName}`}
-                      className="w-full h-full object-cover"
-                    />
+            <Tabs defaultValue="profile" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="payments" className="flex items-center gap-2">
+                  <History className="w-4 h-4" />
+                  Payment History
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="profile" className="space-y-6 mt-4">
+                {/* Profile Photo */}
+                <div className="flex justify-center">
+                  {viewingTenant.profilePhoto ? (
+                    <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-primary/20">
+                      <img 
+                        src={viewingTenant.profilePhoto} 
+                        alt={`${viewingTenant.firstName} ${viewingTenant.lastName}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="text-4xl font-bold text-primary">
+                        {viewingTenant.firstName[0]}{viewingTenant.lastName[0]}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tenant Info */}
+                <div className="text-center">
+                  <h2 className="text-xl font-bold">{viewingTenant.firstName} {viewingTenant.lastName}</h2>
+                  <p className="text-muted-foreground">{viewingTenant.phone}</p>
+                  {viewingTenant.email && <p className="text-muted-foreground">{viewingTenant.email}</p>}
+                </div>
+
+                {/* Details */}
+                <div className="bg-muted rounded-lg p-4 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Property</span>
+                    <span className="font-medium">{properties.find(p => p.id === viewingTenant.propertyId)?.name}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Unit</span>
+                    <span className="font-medium">{units.find(u => u.id === viewingTenant.unitId)?.unitNumber}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Lease Start</span>
+                    <span className="font-medium">{formatDate(viewingTenant.leaseStartDate)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Advance Paid</span>
+                    <span className="font-medium">{formatCurrency(viewingTenant.advancePaid)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Monthly Water Bill</span>
+                    <span className="font-medium">{formatCurrency(viewingTenant.monthlyWaterBill)}</span>
+                  </div>
+                  {viewingTenant.aadharNumber && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Aadhar Number</span>
+                      <span className="font-medium">{viewingTenant.aadharNumber}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Aadhar Document */}
+                {viewingTenant.aadharDocument && (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Aadhar Document
+                    </h3>
+                    <div className="border rounded-lg overflow-hidden">
+                      {viewingTenant.aadharDocument.startsWith('data:image') ? (
+                        <img 
+                          src={viewingTenant.aadharDocument} 
+                          alt="Aadhar Document"
+                          className="w-full h-auto"
+                        />
+                      ) : (
+                        <div className="p-4 bg-muted text-center">
+                          <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-sm text-muted-foreground">{viewingTenant.aadharFileName || 'Document'}</p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-2"
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = viewingTenant.aadharDocument!;
+                              link.download = viewingTenant.aadharFileName || 'aadhar-document';
+                              link.click();
+                            }}
+                          >
+                            Download
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="payments" className="mt-4">
+                {tenantPayments.length === 0 ? (
+                  <div className="text-center py-8">
+                    <History className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground">No payment history yet</p>
                   </div>
                 ) : (
-                  <div className="w-32 h-32 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="text-4xl font-bold text-primary">
-                      {viewingTenant.firstName[0]}{viewingTenant.lastName[0]}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Tenant Info */}
-              <div className="text-center">
-                <h2 className="text-xl font-bold">{viewingTenant.firstName} {viewingTenant.lastName}</h2>
-                <p className="text-muted-foreground">{viewingTenant.phone}</p>
-                {viewingTenant.email && <p className="text-muted-foreground">{viewingTenant.email}</p>}
-              </div>
-
-              {/* Details */}
-              <div className="bg-muted rounded-lg p-4 space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Property</span>
-                  <span className="font-medium">{properties.find(p => p.id === viewingTenant.propertyId)?.name}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Unit</span>
-                  <span className="font-medium">{units.find(u => u.id === viewingTenant.unitId)?.unitNumber}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Lease Start</span>
-                  <span className="font-medium">{formatDate(viewingTenant.leaseStartDate)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Advance Paid</span>
-                  <span className="font-medium">{formatCurrency(viewingTenant.advancePaid)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Monthly Water Bill</span>
-                  <span className="font-medium">{formatCurrency(viewingTenant.monthlyWaterBill)}</span>
-                </div>
-                {viewingTenant.aadharNumber && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Aadhar Number</span>
-                    <span className="font-medium">{viewingTenant.aadharNumber}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Aadhar Document */}
-              {viewingTenant.aadharDocument && (
-                <div className="space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Aadhar Document
-                  </h3>
-                  <div className="border rounded-lg overflow-hidden">
-                    {viewingTenant.aadharDocument.startsWith('data:image') ? (
-                      <img 
-                        src={viewingTenant.aadharDocument} 
-                        alt="Aadhar Document"
-                        className="w-full h-auto"
-                      />
-                    ) : (
-                      <div className="p-4 bg-muted text-center">
-                        <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-                        <p className="text-sm text-muted-foreground">{viewingTenant.aadharFileName || 'Document'}</p>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="mt-2"
-                          onClick={() => {
-                            const link = document.createElement('a');
-                            link.href = viewingTenant.aadharDocument!;
-                            link.download = viewingTenant.aadharFileName || 'aadhar-document';
-                            link.click();
-                          }}
-                        >
-                          Download
-                        </Button>
+                  <div className="space-y-3">
+                    {/* Payment Summary */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      <div className="bg-success/10 rounded-lg p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Paid</p>
+                        <p className="font-bold text-success">
+                          {tenantPayments.filter(p => p.status === 'paid').length}
+                        </p>
                       </div>
-                    )}
+                      <div className="bg-warning/10 rounded-lg p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Pending</p>
+                        <p className="font-bold text-warning">
+                          {tenantPayments.filter(p => p.status === 'pending' || p.status === 'partial').length}
+                        </p>
+                      </div>
+                      <div className="bg-danger/10 rounded-lg p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Overdue</p>
+                        <p className="font-bold text-danger">
+                          {tenantPayments.filter(p => p.status === 'overdue').length}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Payment List */}
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {tenantPayments.map((payment) => (
+                        <div 
+                          key={payment.id}
+                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-full ${
+                              payment.status === 'paid' ? 'bg-success/10' :
+                              payment.status === 'overdue' ? 'bg-danger/10' :
+                              'bg-warning/10'
+                            }`}>
+                              {payment.status === 'paid' ? (
+                                <CheckCircle2 className="w-4 h-4 text-success" />
+                              ) : payment.status === 'overdue' ? (
+                                <AlertCircle className="w-4 h-4 text-danger" />
+                              ) : (
+                                <Clock className="w-4 h-4 text-warning" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium">{formatMonth(payment.month)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Rent: {formatCurrency(payment.rentAmount)} + Water: {formatCurrency(payment.waterBill)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold">{formatCurrency(payment.paidAmount)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              of {formatCurrency(payment.totalAmount)}
+                            </p>
+                            <Badge 
+                              variant={
+                                payment.status === 'paid' ? 'default' :
+                                payment.status === 'overdue' ? 'destructive' : 'secondary'
+                              }
+                              className="mt-1"
+                            >
+                              {payment.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Total Summary */}
+                    <div className="border-t pt-3 mt-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Total Paid</span>
+                        <span className="font-bold text-success">
+                          {formatCurrency(tenantPayments.reduce((sum, p) => sum + p.paidAmount, 0))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm mt-1">
+                        <span className="text-muted-foreground">Total Outstanding</span>
+                        <span className="font-bold text-danger">
+                          {formatCurrency(tenantPayments.reduce((sum, p) => sum + (p.totalAmount - p.paidAmount), 0))}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
